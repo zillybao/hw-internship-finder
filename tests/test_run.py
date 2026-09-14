@@ -10,7 +10,7 @@ import pytest
 
 from src.dedupe import SeenJobsCache, link_hash
 from src.models import JobPosting
-from src.run import ROOT, _flush_company, load_sites
+from src.run import ROOT, _flush_company, _scan_budget_seconds, load_sites
 from src.sheet import SheetError
 
 
@@ -137,7 +137,26 @@ def test_sites_yaml_priority_scan_order() -> None:
     names = [s.company for s in sites]
     assert names[0] == "AMD"
     assert names[1] == "NVIDIA"
-    assert names[-1] == "Arm"
-    assert names.index("AMD") < names.index("Broadcom")
+    assert names[-1] == "Tesla"
     assert names.index("SpaceX") < names.index("Apple")
     assert names.index("Waymo") < names.index("Tesla")
+    assert "Broadcom" not in names
+    assert "Arm" not in names
+
+
+def test_paused_sites_are_not_lost() -> None:
+    paused = load_sites(ROOT / "config" / "sites_paused.yaml")
+    names = [s.company for s in paused]
+    assert "Broadcom" in names
+    assert "Leidos" in names
+    assert "Arm" in names
+
+
+def test_scan_budget_seconds_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SCAN_BUDGET_SECONDS", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    assert _scan_budget_seconds() is None
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert _scan_budget_seconds() == 26 * 60
+    monkeypatch.setenv("SCAN_BUDGET_SECONDS", "90")
+    assert _scan_budget_seconds() == 90.0

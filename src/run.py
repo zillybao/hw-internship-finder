@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
+import time
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -41,6 +43,17 @@ LOCATIONS_PATH = CONFIG_DIR / "locations.yaml"
 EDUCATION_PATH = CONFIG_DIR / "education.yaml"
 SEEN_PATH = STATE_DIR / "seen_jobs.json"
 COMPANY_STATE_PATH = STATE_DIR / "company_runs.json"
+# Leave a few minutes before GitHub's 30m job timeout so Done/Progress logs flush.
+ACTIONS_SCAN_BUDGET_SECONDS = 26 * 60
+
+
+def _scan_budget_seconds() -> float | None:
+    raw = os.getenv("SCAN_BUDGET_SECONDS")
+    if raw is not None and raw.strip() != "":
+        return float(raw)
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        return float(ACTIONS_SCAN_BUDGET_SECONDS)
+    return None
 
 
 def _setup_logging(today: date) -> logging.Logger:
@@ -177,11 +190,27 @@ def run(
     failures: list[str] = []
     total_added = 0
     total_closed = 0
+    scan_started = time.monotonic()
+    budget = _scan_budget_seconds()
+    if budget is not None:
+        log.info("Scan budget: %.0fs", budget)
 
     with Fetcher() as fetcher:
-        for site in sites:
+        for index, site in enumerate(sites):
+            elapsed = time.monotonic() - scan_started
+            if budget is not None and elapsed >= budget:
+                leftover = [s.company for s in sites[index:]]
+                msg = (
+                    f"scan budget: skipped {len(leftover)} remaining companies "
+                    f"after {elapsed:.0f}s ({', '.join(leftover)})"
+                )
+                log.warning(msg)
+                failures.append(msg)
+                break
+
             run_count = _company_run_count(company_state, site.company)
             log_only_filter = run_count < site.first_seen_runs
+            company_started = time.monotonic()
 
             log.info(
                 "Scanning %s (%s) [runs=%s, filter_log_only=%s]",
@@ -204,6 +233,13 @@ def run(
                 _bump_company_run(company_state, site.company)
                 if not dry_run:
                     _save_company_state(company_state)
+                log.info(
+                    "Progress: added=%s closed=%s last=%s elapsed=%.0fs",
+                    total_added,
+                    total_closed,
+                    site.company,
+                    time.monotonic() - scan_started,
+                )
                 continue
 
             if site.expected_min and len(postings) < site.expected_min:
@@ -271,7 +307,7 @@ def run(
             new_postings = [p for p in kept if not is_known_link(p.link, known_hashes)]
             strip_descriptions(new_postings)
             log.info(
-                "%s: %s parsed, %s non-US, %s too old, %s grad-only, %s kept after keywords, %s new",
+                "%s: %s parsed, %s non-US, %s too old, %s grad-only, %s kept after keywords, %s new (%.1fs)",
                 site.company,
                 len(postings),
                 len(non_us),
@@ -279,6 +315,7 @@ def run(
                 len(grad_only),
                 len(kept),
                 len(new_postings),
+                time.monotonic() - company_started,
             )
 
             if dry_run:
@@ -311,6 +348,13 @@ def run(
                 total_added += len(recovered)
                 _bump_company_run(company_state, site.company)
                 _save_company_state(company_state)
+                log.info(
+                    "Progress: added=%s closed=%s last=%s elapsed=%.0fs",
+                    total_added,
+                    total_closed,
+                    site.company,
+                    time.monotonic() - scan_started,
+                )
                 continue
 
             total_added += added
@@ -323,6 +367,13 @@ def run(
                     added,
                     closed,
                 )
+            log.info(
+                "Progress: added=%s closed=%s last=%s elapsed=%.0fs",
+                total_added,
+                total_closed,
+                site.company,
+                time.monotonic() - scan_started,
+            )
 
     if dry_run:
         log.info("Dry run - %s new posting(s) would be added:", len(all_new))

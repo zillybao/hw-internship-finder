@@ -12,7 +12,8 @@
 #   Tier 1 — core semi / proven keyword hits
 #   Tier 2 — solid faceted / useful ATS
 #   Tier 3 — quiet / low-yield boards
-#   Tier 4 — slow unfaceted Workday, Arm, or fragile Apple/Google/Tesla (last)
+#   Tier 4 — fragile Apple/Google/Tesla (last)
+# Unfaceted Workday + Arm: config/sites_paused.yaml (Actions 30m cap)
 # Put new companies in the matching tier — not blindly at EOF.
 #
 # Still-skipped custom boards: config/urls_skipped.txt
@@ -642,124 +643,7 @@
   expected_min: 0
   first_seen_runs: 0
 
-# --- Tier 4: slow or fragile (last) ---
-
-- company: Broadcom
-  ats: workday
-  board: External_Career
-  workday_host: broadcom.wd1.myworkdayjobs.com
-  workday_tenant: broadcom
-  url: https://broadcom.wd1.myworkdayjobs.com/External_Career
-  expected_min: 1
-  first_seen_runs: 0
-
-- company: Silicon Labs
-  ats: workday
-  board: SiliconlabsCareers
-  workday_host: silabs.wd1.myworkdayjobs.com
-  workday_tenant: silabs
-  url: https://silabs.wd1.myworkdayjobs.com/SiliconlabsCareers
-  expected_min: 1
-  first_seen_runs: 0
-
-- company: Sierra Nevada
-  ats: workday
-  board: SNC_External_Career_Site
-  workday_host: snc.wd1.myworkdayjobs.com
-  workday_tenant: snc
-  url: https://snc.wd1.myworkdayjobs.com/SNC_External_Career_Site
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: AeroVironment
-  ats: workday
-  board: AVAV
-  workday_host: avav.wd1.myworkdayjobs.com
-  workday_tenant: avav
-  url: https://avav.wd1.myworkdayjobs.com/AVAV
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: Spectrum Control
-  ats: workday
-  board: SpectrumControl
-  workday_host: spectrumcontrol.wd1.myworkdayjobs.com
-  workday_tenant: spectrumcontrol
-  url: https://spectrumcontrol.wd1.myworkdayjobs.com/SpectrumControl
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: Rockwell Automation
-  ats: workday
-  board: External_Rockwell_Automation
-  workday_host: rockwellautomation.wd1.myworkdayjobs.com
-  workday_tenant: rockwellautomation
-  url: https://rockwellautomation.wd1.myworkdayjobs.com/External_Rockwell_Automation
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: Semtech
-  ats: workday
-  board: SemtechCareers
-  workday_host: semtech.wd1.myworkdayjobs.com
-  workday_tenant: semtech
-  url: https://semtech.wd1.myworkdayjobs.com/SemtechCareers
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: Insitu
-  ats: workday
-  board: Careers
-  workday_host: insitu.wd1.myworkdayjobs.com
-  workday_tenant: insitu
-  url: https://insitu.wd1.myworkdayjobs.com/Careers
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: BD
-  ats: workday
-  board: EXTERNAL_CAREER_SITE_USA
-  workday_host: bdx.wd1.myworkdayjobs.com
-  workday_tenant: bdx
-  url: https://bdx.wd1.myworkdayjobs.com/EXTERNAL_CAREER_SITE_USA
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: Boston Dynamics
-  ats: workday
-  board: Boston_Dynamics
-  workday_host: bostondynamics.wd1.myworkdayjobs.com
-  workday_tenant: bostondynamics
-  url: https://bostondynamics.wd1.myworkdayjobs.com/Boston_Dynamics
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: Wisk
-  ats: workday
-  board: Wisk_Careers
-  workday_host: wisk.wd108.myworkdayjobs.com
-  workday_tenant: wisk
-  url: https://wisk.wd108.myworkdayjobs.com/Wisk_Careers
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: Leidos
-  ats: workday
-  board: External
-  workday_host: leidos.wd5.myworkdayjobs.com
-  workday_tenant: leidos
-  url: https://leidos.wd5.myworkdayjobs.com/External
-  expected_min: 0
-  first_seen_runs: 0
-
-- company: iRhythm
-  ats: workday
-  board: iRhythm
-  workday_host: irhythm.wd5.myworkdayjobs.com
-  workday_tenant: irhythmtech
-  url: https://irhythm.wd5.myworkdayjobs.com/iRhythm
-  expected_min: 0
-  first_seen_runs: 0
+# --- Tier 4: fragile (last). Unfaceted Workday + Arm live in sites_paused.yaml. ---
 
 - company: Apple
   ats: apple
@@ -780,21 +664,4 @@
   tesla_site: US
   tesla_type: intern
   expected_min: 1
-  first_seen_runs: 0
-
-- company: Arm
-  ats: talentbrew
-  url: https://careers.arm.com
-  query: ""
-  # Avoid matching "interconnect" — "intern" is a substring of those titles.
-  title_keywords:
-    - internship
-    - "intern "
-    - "intern,"
-    - "intern-"
-    - "(intern"
-    - co-op
-    - coop
-    - industrial placement
-  expected_min: 0
   first_seen_runs: 0

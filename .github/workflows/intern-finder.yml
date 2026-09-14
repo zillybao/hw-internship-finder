@@ -74,20 +74,25 @@ jobs:
             echo "$msg" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          planned=$(grep -E 'Sheet write planned:' "$log" | tail -1 || true)
+          progress=$(grep -E 'Progress: added=' "$log" | tail -1 || true)
+          flushed=$(grep -E ': flushed added=' "$log" || true)
           done=$(grep -E 'Done: added=' "$log" | tail -1 || true)
-          if [ -n "$planned" ]; then
-            echo "$planned"
-            echo "::notice::$planned"
-            echo "$planned" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$progress" ]; then
+            echo "$progress"
+            echo "::notice::$progress"
+            echo "$progress" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$flushed" ]; then
+            echo "$flushed"
+            echo "$flushed" >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ -n "$done" ]; then
             echo "$done"
             echo "::notice::$done"
             echo "$done" >> "$GITHUB_STEP_SUMMARY"
           fi
-          if [ -z "$planned" ] && [ -z "$done" ]; then
-            msg="No sheet-write count in $log (scan likely timed out or crashed before the write)."
+          if [ -z "$progress" ] && [ -z "$flushed" ] && [ -z "$done" ]; then
+            msg="No sheet-write progress in $log (scan likely timed out before the first company finished)."
             echo "$msg"
             echo "::warning::$msg"
             echo "$msg" >> "$GITHUB_STEP_SUMMARY"

@@ -17,8 +17,9 @@ Sheets is the datastore so you can mark `applied` by hand without fighting a loc
 CSV. Credentials live in `.env` / `credentials.json` (gitignored), never in the repo.
 
 ## Current coverage
-- **`config/sites.yaml`**: ~91 companies, all on named ATS parsers (no `html` entries
-  in the live list).
+- **`config/sites.yaml`**: live scan list (named ATS parsers only; no `html`
+  entries). Unfaceted Workday catalogs and Arm TalentBrew are parked in
+  **`config/sites_paused.yaml`** so GitHub Actions stays under the 30-minute cap.
 - **`config/urls.txt`**: original career-page URL dump (source of truth for *what we
   considered*).
 - **`config/urls_skipped.txt`**: companies still needing a dedicated parser (MediaTek,
@@ -53,7 +54,8 @@ Supported `ats` values: `greenhouse`, `lever`, `ashby`, `workday`, `eightfold`,
 
 ```
 config/
-  sites.yaml              # companies + ats + board/host/query/facets
+  sites.yaml              # live companies + ats + board/host/query/facets
+  sites_paused.yaml       # unfaceted Workday + Arm (not scanned)
   keywords.yaml           # description-body keywords
   locations.yaml          # US vs non-US location filter
   education.yaml          # post-undergrad / graduate-only drop phrases
@@ -139,14 +141,17 @@ priority tiers: core semi first, slow/fragile boards last). Delays in `src/fetch
 - HTML/SSR (`get_text`: Apple, Google, TalentBrew job pages): **1.5s**
 
 Timeouts retry 3× (transport/timeout only). HTTP 403/404 fail that site and
-continue. Expected wall time is **~15–25 min** per run typical, **~10–15 min**
-best, **~35–45 min** if unfaceted Workday catalogs (Broadcom, Leidos, BD, …) are
-huge or HTML detail counts spike. GitHub Actions `timeout-minutes: 30` may kill a
-slow run — treat that as a constraint when adding boards.
+continue. Expected wall time is **~15–25 min** per run typical with the live
+list. Unfaceted Workday catalogs (Broadcom, Leidos, BD, …) and Arm’s full-board
+TalentBrew details are **paused** (`config/sites_paused.yaml`) because they push
+a full scan past GitHub Actions `timeout-minutes: 30`. On Actions, the scanner
+also stops starting new companies after **26 minutes** (`SCAN_BUDGET_SECONDS`)
+so `Progress:` / `Done:` lines can flush. Treat the 30-minute cap as a constraint
+when adding boards.
 
 Custom / fragile parsers: **Apple** (SSR hydration JSON), **Google**
 (`AF_initDataCallback`), **Tesla** (cua-api; often 403 from datacenter IPs).
-Arm in `sites.yaml` uses **TalentBrew**, not the unused sitemap `ats: arm` helper.
+The unused sitemap helper is `ats: arm`; live Arm (paused) used TalentBrew.
 
 ## Data Model
 Each posting normalizes to:
@@ -343,9 +348,9 @@ Follow-ups (tune from skipped logs, do not broaden blindly):
 
 ## Open Questions / TODO
 - Tune `expected_min` and lookback from skipped/new-row logs after more runs.
-- Remaining runtime: 15 Workday sites with no intern facet; Phenom sites with
-  empty `query`; Arm TalentBrew full-board list.
-- GitHub Actions 30-minute cap vs a slow 35–45 min run.
+- Re-enable `config/sites_paused.yaml` (unfaceted Workday + Arm) only with intern
+  facets / a `query`, or a higher Actions timeout.
+- Lattice Semiconductor is still live Workday without `applied_facets`.
 - `config/urls_skipped.txt` — add only with a known ATS/API.
 - Tesla/Apple/Google bot walls from Actions IPs.
 - Optional: intern `query` on Phenom; real intern facets on large Workday boards

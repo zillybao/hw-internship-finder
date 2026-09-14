@@ -105,9 +105,15 @@ The JSON secret is written to `credentials.json` on the runner; the scan step th
 
 If some career boards 403 (Tesla / Apple / Google often do from GitHub IPs), the scanner exits `1` but still writes any new rows. The workflow treats that as a **warning** and keeps the job green. Exit `2` (sheet unavailable / missing secrets) still fails the job.
 
-After **Run scanner**, the **Report planned sheet writes** step prints `Sheet write planned: N new row(s)` and `Done: added=… closed=… failures=…` (also on the job summary). `N` is how many rows the run intended to append; `added=0` with no warning usually means nothing new, not a silent write failure. If that step warns that the count is missing, the scan likely timed out or crashed before the write.
+After **Run scanner**, the **Report planned sheet writes** step prints the last
+`Progress: added=… closed=… last=… elapsed=…` line (running totals after each
+company flush), any per-company `flushed added=` lines, and `Done: added=…` if
+the scan finished. Rows are appended **as each company completes**, so a timeout
+does not mean zero writes — it means the run never reached the final `Done:`
+line. `added=0` with a Progress line usually means nothing new, not a silent
+write failure.
 
-The workflow caches `state/` (`seen_jobs.json`, `company_runs.json`) between runs. Job timeout is 30 minutes; a slow scan (unfaceted Workday catalogs) can hit that cap.
+The workflow caches `state/` (`seen_jobs.json`, `company_runs.json`) between runs. Job timeout is 30 minutes; the scanner stops starting new companies after 26 minutes on Actions. Unfaceted Workday catalogs are paused in `config/sites_paused.yaml`.
 
 ## Config
 
