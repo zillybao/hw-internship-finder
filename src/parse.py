@@ -79,6 +79,8 @@ AMAZON_PAGE_SIZE = 20
 PHENOM_PAGE_SIZE = 50
 SMARTRECRUITERS_PAGE_SIZE = 100
 TALENTBREW_PAGE_SIZE = 15
+SUCCESSFACTORS_PAGE_SIZE = 25
+ICIMS_PAGE_SIZE = 20
 SMARTRECRUITERS_POSTINGS = (
     "https://api.smartrecruiters.com/v1/companies/{board}/postings"
 )
@@ -222,6 +224,10 @@ def parse_site(
         postings = _parse_amazon(site, fetcher)
     elif site.ats in {"phenom", "amd"}:
         postings = _parse_phenom_jobs(site, fetcher)
+    elif site.ats in {"successfactors", "sf"}:
+        postings = _parse_successfactors(site, fetcher)
+    elif site.ats == "icims":
+        postings = _parse_icims(site, fetcher)
     elif site.ats == "apple":
         postings = _parse_apple(site, fetcher)
     elif site.ats == "google":
@@ -439,7 +445,7 @@ def _parse_workday(site: SiteConfig, fetcher: Fetcher, *, today: date) -> list[J
             "appliedFacets": site.applied_facets,
             "limit": WORKDAY_PAGE_SIZE,
             "offset": offset,
-            "searchText": "",
+            "searchText": site.query,
         }
         data = fetcher.post_json(list_url, payload)
         if not isinstance(data, dict):
@@ -1111,6 +1117,205 @@ def _parse_phenom_jobs(site: SiteConfig, fetcher: Fetcher) -> list[JobPosting]:
                 location=location,
                 description=description,
                 date_posted=posted,
+                source_page=site.url,
+            )
+        )
+    return postings
+
+
+def _successfactors_search_base(site: SiteConfig) -> str:
+    """Career site root used for /search/?q= pagination (may include /Teradyne)."""
+    return site.url.split("?", 1)[0].rstrip("/")
+
+
+def _successfactors_cards(html: str, base_url: str) -> list[dict[str, str]]:
+    """Parse SuccessFactors RMK search HTML (tr.data-row or a.jobTitle-link)."""
+    soup = _soup(html)
+    cards: list[dict[str, str]] = []
+    seen: set[str] = set()
+    rows = soup.select("tr.data-row")
+    anchors: list[Any] = []
+    if rows:
+        for row in rows:
+            a = row.select_one("a.jobTitle-link, a.jobTitle, span.jobTitle a")
+            loc_el = row.select_one(".jobLocation, .colLocation, span.jobLocation")
+            location = loc_el.get_text(" ", strip=True) if loc_el else ""
+            if a is not None:
+                anchors.append((a, location))
+    else:
+        for a in soup.select("a.jobTitle-link, a.jobTitle"):
+            loc = ""
+            parent = a.find_parent("tr") or a.find_parent("li") or a.parent
+            if parent is not None:
+                loc_el = parent.select_one(".jobLocation, .colLocation, span.jobLocation")
+                if loc_el is not None:
+                    loc = loc_el.get_text(" ", strip=True)
+            anchors.append((a, loc))
+    for a, location in anchors:
+        href = str(a.get("href") or "").strip()
+        title = a.get_text(" ", strip=True)
+        if not href or not title:
+            continue
+        link = normalize_link(urljoin(base_url + "/", href))
+        if link in seen:
+            continue
+        seen.add(link)
+        cards.append({"title": title, "link": link, "location": location})
+    return cards
+
+
+def _successfactors_description(html: str) -> tuple[str, str]:
+    soup = _soup(html)
+    loc = ""
+    loc_el = soup.select_one(".jobLocation, span.jobLocation, #job-location")
+    if loc_el is not None:
+        loc = loc_el.get_text(" ", strip=True)
+    desc_el = soup.select_one("#job-description, .jobdescription, div.job, #jobDesc")
+    description = _clean_html(str(desc_el)) if desc_el is not None else _clean_html(html)
+    return description, loc
+
+
+def _parse_successfactors(site: SiteConfig, fetcher: Fetcher) -> list[JobPosting]:
+    """SuccessFactors RMK job search HTML (Teradyne, Skyworks, pSemi/Murata)."""
+    base = _successfactors_search_base(site)
+    query = site.query
+    start = 0
+    cards: list[dict[str, str]] = []
+    while start < SUCCESSFACTORS_PAGE_SIZE * 40:
+        params = {
+            "q": query,
+            "sortColumn": "referencedate",
+            "sortDirection": "desc",
+            "startrow": str(start),
+        }
+        list_url = f"{base}/search/?{urlencode(params)}"
+        html = fetcher.get_text(list_url)
+        batch = _successfactors_cards(html, base)
+        if not batch:
+            break
+        cards.extend(batch)
+        if len(batch) < SUCCESSFACTORS_PAGE_SIZE:
+            break
+        start += len(batch)
+
+    postings: list[JobPosting] = []
+    for card in cards:
+        title = card["title"]
+        if not title_matches(title, site.title_keywords):
+            continue
+        link = card["link"]
+        location = card.get("location") or ""
+        description = ""
+        try:
+            detail_html = fetcher.get_text(link)
+            description, loc = _successfactors_description(detail_html)
+            if loc:
+                location = loc
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s: SuccessFactors detail failed for %s: %s", site.company, link, exc)
+        postings.append(
+            JobPosting(
+                company=site.company,
+                title=title,
+                link=link,
+                location=location,
+                description=description,
+                source_page=site.url,
+            )
+        )
+    return postings
+
+
+def _icims_cards(html: str, origin: str) -> list[dict[str, str]]:
+    soup = _soup(html)
+    cards: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for a in soup.select('a[href*="/jobs/"]'):
+        href = str(a.get("href") or "").strip()
+        title = a.get_text(" ", strip=True)
+        if not href or not title:
+            continue
+        if "/job" not in href.lower():
+            continue
+        if title.lower() in {"more", "apply", "view", "see more"}:
+            continue
+        if len(title) < 8:
+            continue
+        link = normalize_link(urljoin(origin + "/", href))
+        if "/jobs/" not in link or link in seen:
+            continue
+        seen.add(link)
+        location = ""
+        parent = a.find_parent("div") or a.parent
+        if parent is not None:
+            loc_el = parent.select_one(
+                ".iCIMS_JobHeaderData, span[itemprop='address'], .jobLocation"
+            )
+            if loc_el is not None:
+                location = loc_el.get_text(" ", strip=True)
+        cards.append({"title": title, "link": link, "location": location})
+    return cards
+
+
+def _icims_description(html: str) -> tuple[str, str]:
+    soup = _soup(html)
+    loc = ""
+    loc_el = soup.select_one(".iCIMS_JobHeaderData, span[itemprop='address']")
+    if loc_el is not None:
+        loc = loc_el.get_text(" ", strip=True)
+    desc_el = soup.select_one(
+        ".iCIMS_JobContent, .iCIMS_InfoMsg, div[itemprop='description']"
+    )
+    description = _clean_html(str(desc_el)) if desc_el is not None else _clean_html(html)
+    return description, loc
+
+
+def _parse_icims(site: SiteConfig, fetcher: Fetcher) -> list[JobPosting]:
+    """Public iCIMS career-site search (careers-*.icims.com), not the credentialed API."""
+    origin = _origin(site.url)
+    page = 0
+    cards: list[dict[str, str]] = []
+    while page < 40:
+        params: dict[str, str] = {
+            "ss": "1",
+            "in_iframe": "1",
+            "pr": str(page),
+        }
+        if site.query:
+            params["searchKeyword"] = site.query
+            params["searchRelation"] = "keyword_all"
+        list_url = f"{origin}/jobs/search?{urlencode(params)}"
+        html = fetcher.get_text(list_url)
+        batch = _icims_cards(html, origin)
+        if not batch:
+            break
+        cards.extend(batch)
+        if len(batch) < ICIMS_PAGE_SIZE:
+            break
+        page += 1
+
+    postings: list[JobPosting] = []
+    for card in cards:
+        title = card["title"]
+        if not title_matches(title, site.title_keywords):
+            continue
+        link = card["link"]
+        location = card.get("location") or ""
+        description = ""
+        try:
+            detail_html = fetcher.get_text(link)
+            description, loc = _icims_description(detail_html)
+            if loc:
+                location = loc
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s: iCIMS detail failed for %s: %s", site.company, link, exc)
+        postings.append(
+            JobPosting(
+                company=site.company,
+                title=title,
+                link=link,
+                location=location,
+                description=description,
                 source_page=site.url,
             )
         )

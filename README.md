@@ -2,11 +2,11 @@
 
 A scheduled scanner for internships in **embedded / firmware / ASIC / FPGA / RTL**. It polls a configured list of company career boards, matches job **descriptions** against keywords, and **appends only new rows** to a Google Sheet.
 
-There is no Playwright and no generic crawler. Each company in `config/sites.yaml` uses a named ATS parser (Greenhouse, Workday, Lever, …). You mark `applied` by hand in the sheet.
+There is no Playwright and no generic crawler. Each company in `config/sites.yaml` (group 1) or `config/sites_b.yaml` (group 2) uses a named ATS parser (Greenhouse, Workday, Lever, …). You mark `applied` by hand in the sheet.
 
 ## What it does
 
-- Scans ~84 companies listed in `config/sites.yaml` (sequential HTTP, public ATS JSON where possible).
+- Scans group 1 (`config/sites.yaml`) then group 2 (`config/sites_b.yaml`) on GitHub Actions (sequential HTTP, public ATS JSON where possible). Both write the same sheet.
 - Title-gates on intern / co-op **before** fetching descriptions.
 - Drops postings whose location is clearly non-US (`config/locations.yaml`). Empty / remote / unknown city-only locations are kept; known foreign hubs (Shanghai, Linz, …) are dropped even without a country name.
 - Drops dated postings older than 3 days. Undated postings are kept.
@@ -16,7 +16,7 @@ There is no Playwright and no generic crawler. Each company in `config/sites.yam
 - Marks previously `open` / `applied` rows `closed` when that link disappears from the company’s live intern-titled set.
 - Optional Slack digest of new rows and per-site failures.
 
-It does **not** auto-apply, scrape sites outside `sites.yaml`, or write description text to the sheet.
+It does **not** auto-apply, scrape sites outside `sites.yaml` / `sites_b.yaml`, or write description text to the sheet.
 
 ## Requirements
 
@@ -64,21 +64,22 @@ Sheet columns (written automatically if row 1 is empty):
 | company | title | link | location | status | date_found | date_posted | source_page |
 |---------|-------|------|----------|--------|------------|-------------|-------------|
 
-`link` is the job posting (dedupe key). `source_page` is the career-board URL from `sites.yaml` (used for closed-status). `status` is `open` or `closed` from the scanner; set `applied` yourself. Newest rows are at the bottom. Leave row 1 as headers in A–H only.
+`link` is the job posting (dedupe key). `source_page` is the career-board URL from the site YAML (used for closed-status). `status` is `open` or `closed` from the scanner; set `applied` yourself. Newest rows are at the bottom. Leave row 1 as headers in A–H only.
 
 ## Run
 
 From the project root (do not use an empty `.venv`):
 
 ```bash
-python -m src.run --dry-run    # fetch + filter, no sheet or state writes
-python -m src.run              # write to Google Sheets
+python -m src.run --dry-run    # group 1: fetch + filter, no sheet or state writes
+python -m src.run              # group 1: write to Google Sheets
+python -m src.run --sites config/sites_b.yaml --dry-run
 python -m pytest
 ```
 
 `--dry-run` is the way to preview a write (no sheet or `state/` writes). If credentials are present it still **reads** the inbox and `_seen` tabs so roles already stored there are not listed as new. Dated postings older than **3 days** are dropped every run; undated postings are kept. Keywords and the education filter are enforced immediately (`first_seen_runs: 0`).
 
-New rows are flushed after each company. Typical wall time is **15–25 minutes**. A single site failure is logged and the rest continue. Exit codes: `0` clean, `1` some sites failed (rows still written), `2` sheet unavailable (non-dry-run).
+New rows are flushed after each company. Typical wall time is **15–25 minutes per group**. A single site failure is logged and the rest continue. Exit codes: `0` clean, `1` some sites failed (rows still written), `2` sheet unavailable (non-dry-run).
 
 Logs:
 
@@ -113,11 +114,11 @@ does not mean zero writes — it means the run never reached the final `Done:`
 line. `added=0` with a Progress line usually means nothing new, not a silent
 write failure.
 
-The workflow caches `state/` (`seen_jobs.json`, `company_runs.json`) between runs. Job timeout is 30 minutes; the scanner stops starting new companies after 26 minutes on Actions. Unfaceted Workday catalogs are paused in `config/sites_paused.yaml`.
+The workflow caches `state/` (`seen_jobs.json`, `company_runs.json`) between jobs and runs. Job timeout is 30 minutes **per group**; the scanner stops starting new companies after 26 minutes on Actions. Group 1 is `config/sites.yaml`. Group 2 is `config/sites_b.yaml` (intern-narrowed Workday/Arm plus elected adds). Both jobs write the same spreadsheet. `config/sites_paused.yaml` is an archive and is not scanned.
 
 ## Config
 
-**Companies** — add entries to `config/sites.yaml`, not to parser code. Supported `ats` values: `greenhouse`, `lever`, `ashby`, `workday`, `eightfold`, `oracle`, `amazon`, `phenom`, `smartrecruiters`, `talentbrew` (alias `smashfly`), `apple`, `google`, `tesla`, `arm`, `html`.
+**Companies** — add group 1 entries to `config/sites.yaml` and group 2 entries to `config/sites_b.yaml`, not to parser code. Supported `ats` values: `greenhouse`, `lever`, `ashby`, `workday`, `eightfold`, `oracle`, `amazon`, `phenom`, `smartrecruiters`, `talentbrew` (alias `smashfly`), `successfactors`, `icims`, `apple`, `google`, `tesla`, `arm`, `html`.
 
 ```yaml
 - company: Example Corp
@@ -137,7 +138,8 @@ Before adding a company: confirm `robots.txt` / ToS, prefer a public JSON list A
 ## Layout
 
 ```
-config/sites.yaml      # companies + ATS + board/host/query/facets
+config/sites.yaml      # group 1 companies + ATS + board/host/query/facets
+config/sites_b.yaml    # group 2 (Actions job 2)
 config/keywords.yaml   # description-body keywords
 config/locations.yaml  # US vs non-US location filter
 config/urls.txt        # original career-page inventory
@@ -148,4 +150,4 @@ state/                 # seen hashes + per-company run counts (gitignored)
 logs/
 ```
 
-Agent-oriented design notes (parsers, lookback, closed-status rules) are in [`AGENTS.md`](AGENTS.md).
+Agent-oriented design 

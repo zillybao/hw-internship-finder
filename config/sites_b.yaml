@@ -1,16 +1,17 @@
-# Archive of boards that used to be omitted from GitHub Actions for the
-# 30-minute cap. Live group 2 is config/sites_b.yaml (intern-narrowed).
-# This file is not loaded by src.run or the workflow.
+# Group 2 (slow / expansion). GitHub Actions job scan_b loads this file.
+# Group 1 is config/sites.yaml — do not copy companies from there.
+# Intern-narrow Workday via query (searchText); empty query is group 1 behavior.
 #
-# Do not load this file in src.run — sites.yaml is group 1; sites_b.yaml is group 2.
+# Archive of the original paused list: config/sites_paused.yaml
 
-# --- Unfaceted Workday (was Tier 4) ---
+# --- Unfaceted Workday (intern searchText) ---
 
 - company: Broadcom
   ats: workday
   board: External_Career
   workday_host: broadcom.wd1.myworkdayjobs.com
   workday_tenant: broadcom
+  query: intern
   url: https://broadcom.wd1.myworkdayjobs.com/External_Career
   expected_min: 1
   first_seen_runs: 0
@@ -20,6 +21,7 @@
   board: SiliconlabsCareers
   workday_host: silabs.wd1.myworkdayjobs.com
   workday_tenant: silabs
+  query: intern
   url: https://silabs.wd1.myworkdayjobs.com/SiliconlabsCareers
   expected_min: 1
   first_seen_runs: 0
@@ -29,6 +31,7 @@
   board: SNC_External_Career_Site
   workday_host: snc.wd1.myworkdayjobs.com
   workday_tenant: snc
+  query: intern
   url: https://snc.wd1.myworkdayjobs.com/SNC_External_Career_Site
   expected_min: 0
   first_seen_runs: 0
@@ -38,6 +41,7 @@
   board: AVAV
   workday_host: avav.wd1.myworkdayjobs.com
   workday_tenant: avav
+  query: intern
   url: https://avav.wd1.myworkdayjobs.com/AVAV
   expected_min: 0
   first_seen_runs: 0
@@ -47,6 +51,7 @@
   board: SpectrumControl
   workday_host: spectrumcontrol.wd1.myworkdayjobs.com
   workday_tenant: spectrumcontrol
+  query: intern
   url: https://spectrumcontrol.wd1.myworkdayjobs.com/SpectrumControl
   expected_min: 0
   first_seen_runs: 0
@@ -56,6 +61,7 @@
   board: External_Rockwell_Automation
   workday_host: rockwellautomation.wd1.myworkdayjobs.com
   workday_tenant: rockwellautomation
+  query: intern
   url: https://rockwellautomation.wd1.myworkdayjobs.com/External_Rockwell_Automation
   expected_min: 0
   first_seen_runs: 0
@@ -65,6 +71,7 @@
   board: SemtechCareers
   workday_host: semtech.wd1.myworkdayjobs.com
   workday_tenant: semtech
+  query: intern
   url: https://semtech.wd1.myworkdayjobs.com/SemtechCareers
   expected_min: 0
   first_seen_runs: 0
@@ -74,6 +81,7 @@
   board: Careers
   workday_host: insitu.wd1.myworkdayjobs.com
   workday_tenant: insitu
+  query: intern
   url: https://insitu.wd1.myworkdayjobs.com/Careers
   expected_min: 0
   first_seen_runs: 0
@@ -83,6 +91,7 @@
   board: EXTERNAL_CAREER_SITE_USA
   workday_host: bdx.wd1.myworkdayjobs.com
   workday_tenant: bdx
+  query: intern
   url: https://bdx.wd1.myworkdayjobs.com/EXTERNAL_CAREER_SITE_USA
   expected_min: 0
   first_seen_runs: 0
@@ -92,6 +101,7 @@
   board: Boston_Dynamics
   workday_host: bostondynamics.wd1.myworkdayjobs.com
   workday_tenant: bostondynamics
+  query: intern
   url: https://bostondynamics.wd1.myworkdayjobs.com/Boston_Dynamics
   expected_min: 0
   first_seen_runs: 0
@@ -101,6 +111,7 @@
   board: Wisk_Careers
   workday_host: wisk.wd108.myworkdayjobs.com
   workday_tenant: wisk
+  query: intern
   url: https://wisk.wd108.myworkdayjobs.com/Wisk_Careers
   expected_min: 0
   first_seen_runs: 0
@@ -110,6 +121,7 @@
   board: External
   workday_host: leidos.wd5.myworkdayjobs.com
   workday_tenant: leidos
+  query: intern
   url: https://leidos.wd5.myworkdayjobs.com/External
   expected_min: 0
   first_seen_runs: 0
@@ -119,16 +131,17 @@
   board: iRhythm
   workday_host: irhythm.wd5.myworkdayjobs.com
   workday_tenant: irhythmtech
+  query: intern
   url: https://irhythm.wd5.myworkdayjobs.com/iRhythm
   expected_min: 0
   first_seen_runs: 0
 
-# --- Full-board TalentBrew HTML details ---
+# --- TalentBrew intern search ---
 
 - company: Arm
   ats: talentbrew
   url: https://careers.arm.com
-  query: ""
+  query: intern
   # Avoid matching "interconnect" — "intern" is a substring of those titles.
   title_keywords:
     - internship
@@ -139,5 +152,107 @@
     - co-op
     - coop
     - industrial placement
+  expected_min: 0
+  first_seen_runs: 0
+
+# --- Wave A: existing Workday / TalentBrew ---
+
+- company: Cisco
+  ats: workday
+  board: cisco_careers
+  workday_host: cisco.wd5.myworkdayjobs.com
+  workday_tenant: cisco
+  query: intern
+  url: https://cisco.wd5.myworkdayjobs.com/cisco_careers
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: Blue Origin
+  ats: workday
+  board: BlueOrigin
+  workday_host: blueorigin.wd5.myworkdayjobs.com
+  workday_tenant: blueorigin
+  query: intern
+  url: https://blueorigin.wd5.myworkdayjobs.com/BlueOrigin
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: Monolithic Power
+  ats: workday
+  board: mps_careers
+  workday_host: monolithicpower.wd12.myworkdayjobs.com
+  workday_tenant: monolithicpower
+  query: intern
+  url: https://monolithicpower.wd12.myworkdayjobs.com/mps_careers
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: Wolfspeed
+  ats: workday
+  board: EXT
+  workday_host: cree.wd108.myworkdayjobs.com
+  workday_tenant: cree
+  query: intern
+  url: https://cree.wd108.myworkdayjobs.com/EXT
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: L3Harris
+  ats: talentbrew
+  url: https://careers.l3harris.com
+  query: intern
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: Qorvo
+  ats: talentbrew
+  url: https://careers.qorvo.com
+  query: intern
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: Seagate
+  ats: talentbrew
+  url: https://seagatecareers.com
+  query: intern
+  expected_min: 0
+  first_seen_runs: 0
+
+# --- Wave B: SuccessFactors RMK ---
+
+- company: Skyworks
+  ats: successfactors
+  url: https://careers.skyworksinc.com
+  query: intern
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: Teradyne
+  ats: successfactors
+  url: https://jobs.teradyne.com/Teradyne
+  query: intern
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: pSemi
+  ats: successfactors
+  url: https://jobs.murata.com/pSemi
+  query: intern
+  expected_min: 0
+  first_seen_runs: 0
+
+# --- Wave C: iCIMS public search ---
+
+- company: Rambus
+  ats: icims
+  url: https://careers-rambus.icims.com
+  query: intern
+  expected_min: 0
+  first_seen_runs: 0
+
+- company: MaxLinear
+  ats: icims
+  url: https://careersus-maxlinear.icims.com
+  query: intern
   expected_min: 0
   first_seen_runs: 0

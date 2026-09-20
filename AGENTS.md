@@ -17,21 +17,23 @@ Sheets is the datastore so you can mark `applied` by hand without fighting a loc
 CSV. Credentials live in `.env` / `credentials.json` (gitignored), never in the repo.
 
 ## Current coverage
-- **`config/sites.yaml`**: live scan list (named ATS parsers only; no `html`
-  entries). Unfaceted Workday catalogs and Arm TalentBrew are parked in
-  **`config/sites_paused.yaml`** so GitHub Actions stays under the 30-minute cap.
+- **`config/sites.yaml`**: group 1 live scan list (named ATS parsers only; no `html`
+  entries). Do not move companies out of this file.
+- **`config/sites_b.yaml`**: group 2 (paused Workday/Arm with intern `query`, plus
+  elected adds). Same sheet; second Actions job.
+- **`config/sites_paused.yaml`**: archive of the old unfaceted list (not scanned).
 - **`config/urls.txt`**: original career-page URL dump (source of truth for *what we
   considered*).
-- **`config/urls_skipped.txt`**: companies still needing a dedicated parser (MediaTek,
-  Siemens, L3Harris, Blue Origin, etc.). Do not scrape these until an ATS/API is
-  identified and `robots.txt`/ToS are checked.
+- **`config/urls_skipped.txt`**: companies still needing a dedicated parser. Do not
+  scrape these until an ATS/API is identified and `robots.txt`/ToS are checked.
 
 Supported `ats` values: `greenhouse`, `lever`, `ashby`, `workday`, `eightfold`,
 `oracle`, `amazon`, `phenom`, `smartrecruiters`, `talentbrew` (alias `smashfly`),
-`apple`, `google`, `tesla`, `arm`, `html`.
+`successfactors`, `icims`, `apple`, `google`, `tesla`, `arm`, `html`.
 
 ## Goals
-- Poll only the companies listed in `config/sites.yaml`.
+- Poll only the companies listed in `config/sites.yaml` (group 1) or
+  `config/sites_b.yaml` (group 2).
 - Extract title, canonical link, location, and posting date when the ATS exposes it.
 - Match **description body** against `config/keywords.yaml` (not title alone).
 - Drop listings whose location is clearly non-US (`config/locations.yaml`).
@@ -45,7 +47,7 @@ Supported `ats` values: `greenhouse`, `lever`, `ashby`, `workday`, `eightfold`,
 ## Non-Goals
 - No auto-apply / form submission.
 - No sites that explicitly disallow automated access in `robots.txt` / ToS.
-- Not a general-purpose crawler; no URLs except those in `sites.yaml`.
+- Not a general-purpose crawler; no URLs except those in `sites.yaml` / `sites_b.yaml`.
 - Do not parallelize all companies in one run (rate limits / bot walls).
 - Do not fetch a job’s description unless the **title** already looks like intern /
   co-op (or the list payload already includes description text).
@@ -54,8 +56,9 @@ Supported `ats` values: `greenhouse`, `lever`, `ashby`, `workday`, `eightfold`,
 
 ```
 config/
-  sites.yaml              # live companies + ats + board/host/query/facets
-  sites_paused.yaml       # unfaceted Workday + Arm (not scanned)
+  sites.yaml              # group 1 companies + ATS + board/host/query/facets
+  sites_b.yaml            # group 2 (intern-narrowed Workday/Arm + elected adds)
+  sites_paused.yaml       # archive of pre-split unfaceted boards (not scanned)
   keywords.yaml           # description-body keywords
   locations.yaml          # US vs non-US location filter
   education.yaml          # post-undergrad / graduate-only drop phrases
@@ -83,8 +86,9 @@ tests/
 Run locally (project root; do not use an empty `.venv`):
 
 ```
-python -m src.run --dry-run    # fetch + filter, no sheet writes
-python -m src.run              # write to Google Sheets
+python -m src.run --dry-run                         # group 1
+python -m src.run --sites config/sites_b.yaml --dry-run
+python -m src.run                                   # group 1, write to Google Sheets
 ```
 
 `--dry-run` does not persist `state/company_runs.json` or `seen_jobs.json`.
@@ -95,7 +99,7 @@ are skipped in the preview.
 **Prefer the public ATS list API, then intern-title-gate, then description.**
 
 1. **List** jobs from the ATS (JSON). Use intern facets/`query` when the board
-   exposes them (Workday `applied_facets`, Eightfold `filter_seniority`, Amazon
+   exposes them (Workday `applied_facets` or `query` → CXS `searchText`, Eightfold `filter_seniority`, Amazon
    `query: internship`, Apple `team=internships-…`).
 2. **Title-filter** with `title_keywords` (default: `intern`, `internship`,
    `co-op`, `coop`) *before* any per-job detail fetch. Greenhouse list payloads
@@ -134,20 +138,19 @@ are skipped in the preview.
    to the sheet (and persist `seen_jobs.json` / `company_runs.json`). Do not wait
    until the end of the run — a timeout or crash must keep earlier finds.
 
-Sites are scanned **sequentially** in `config/sites.yaml` list order (intentional
-priority tiers: core semi first, slow/fragile boards last). Delays in `src/fetch.py`:
+Sites are scanned **sequentially** in the YAML list for that job (group 1:
+`config/sites.yaml`; group 2: `config/sites_b.yaml`). Delays in `src/fetch.py`:
 
 - JSON ATS (`get_json` / `post_json`): **0.4s** after the previous request finishes
 - HTML/SSR (`get_text`: Apple, Google, TalentBrew job pages): **1.5s**
 
 Timeouts retry 3× (transport/timeout only). HTTP 403/404 fail that site and
-continue. Expected wall time is **~15–25 min** per run typical with the live
-list. Unfaceted Workday catalogs (Broadcom, Leidos, BD, …) and Arm’s full-board
-TalentBrew details are **paused** (`config/sites_paused.yaml`) because they push
-a full scan past GitHub Actions `timeout-minutes: 30`. On Actions, the scanner
-also stops starting new companies after **26 minutes** (`SCAN_BUDGET_SECONDS`)
-so `Progress:` / `Done:` lines can flush. Treat the 30-minute cap as a constraint
-when adding boards.
+continue. Expected wall time is **~15–25 min per job** (two sequential Actions
+jobs, each with `timeout-minutes: 30`). Unfaceted Workday catalogs and Arm live
+in **group 2** (`config/sites_b.yaml`) with intern `query` so they do not share
+group 1’s 30-minute cap. On Actions, each job also stops starting new companies
+after **26 minutes** (`SCAN_BUDGET_SECONDS`) so `Progress:` / `Done:` lines can
+flush. Treat the 30-minute cap as a constraint when adding boards to either file.
 
 Custom / fragile parsers: **Apple** (SSR hydration JSON), **Google**
 (`AF_initDataCallback`), **Tesla** (cua-api; often 403 from datacenter IPs).
@@ -166,7 +169,7 @@ Each posting normalizes to:
 | status       | str    | `open` / `applied` / `closed` — script sets open/closed; `applied` is manual |
 | date_found   | date   | when this run first kept it |
 | date_posted  | date   | optional; ISO, epoch, Workday “Posted N Days Ago”, Amazon `"July 29, 2026"` |
-| source_page  | str    | `url` from `sites.yaml` (also the key for closed-status checks) |
+| source_page  | str    | `url` from the site YAML (also the key for closed-status checks) |
 
 Sheet columns (`SCHEMA_VERSION = 1`): `company`, `title`, `link`, `location`,
 `status`, `date_found`, `date_posted`, `source_page`. Headers live in A–H only;
@@ -249,9 +252,9 @@ set — a still-posted intern that fails later filters is not marked closed.
 - `expected_min` on a site: if intern-titled parse count is below that, log a
   warning (possible API/facet break). Many quieter companies use `expected_min: 0`.
 - Before adding a company: check `robots.txt` / ToS; prefer a public JSON
-  endpoint (Network tab) over CSS selectors; add the entry to `sites.yaml` in the
-  matching priority tier (not blindly at EOF) — do not hardcode companies in
-  `parse.py`.
+  endpoint (Network tab) over CSS selectors; add group 1 companies to
+  `sites.yaml` in the matching priority tier, group 2 companies to
+  `sites_b.yaml` — do not hardcode companies in `parse.py`.
 
 ## Review Workflow
 Primary review is the sheet, roughly daily (newest rows at the bottom). `status`
@@ -259,10 +262,9 @@ is `open` / `applied` / `closed`. Optional Slack (`SLACK_WEBHOOK_URL`) posts a
 short end-of-run digest of new rows and of per-site failures; it is not required.
 
 ## Scheduling
-- Cadence: 2 runs/day. Workflow cron: `0 0,12 * * *` UTC (8pm / 8am EST; not
-  DST-aware).
-- Each run is a **full scan** of all sites (idempotent writes). Runtime does not
-  shrink on later runs.
+- Cadence: 2 workflow runs/day. Cron: `0 8,20 * * *` UTC. Each run is two
+  sequential jobs (group 1 then group 2), same sheet.
+- Each job is a **full scan** of that group’s YAML (idempotent writes).
 - Prefer GitHub Actions or cron over an always-on process.
 - Actions does not read `.env`. Required repo secrets: `GOOGLE_SERVICE_ACCOUNT_JSON`
   (full key file contents) and `GOOGLE_SHEET_ID`. Optional: `GOOGLE_SHEET_WORKSHEET`,
@@ -279,9 +281,11 @@ short end-of-run digest of new rows and of per-site failures; it is not required
   url: https://boards.greenhouse.io/examplecorp
   expected_min: 1          # warn if intern-titled count drops below this
   first_seen_runs: 0       # 0 = always enforce keywords (no log-only keep)
-  # Workday extras: workday_host, workday_tenant, applied_facets
+  # Workday extras: workday_host, workday_tenant, applied_facets, query (searchText)
   # Eightfold extras: domain, eightfold_api (v2|pcsx), query, extra_params
   # Oracle extras: oracle_host, board, query
+  # SuccessFactors extras: url is the RMK search root (may include /Teradyne)
+  # iCIMS extras: url is https://careers-*.icims.com; query is searchKeyword
   # title_keywords: override intern/co-op title gate (see Arm)
 ```
 
@@ -313,7 +317,8 @@ python -m pytest
 Cover link normalization, identity-hash dedupe (Greenhouse host aliases, Workday
 locale/req ids, HYPERLINK cells), keyword token match, US location filter, 3-day posted-date
 lookback, education filter, Greenhouse intern-only detail fetches,
-TalentBrew card HTML, Amazon-style dates, spreadsheet-ID extraction from a
+TalentBrew card HTML, Workday `searchText` from `query`, SuccessFactors/iCIMS intern-only
+details, Amazon-style dates, spreadsheet-ID extraction from a
 docs URL, blank `GOOGLE_SHEET_WORKSHEET` → `Sheet1`, and per-company sheet flush
 (cache advances only after a successful append).
 
@@ -348,10 +353,9 @@ Follow-ups (tune from skipped logs, do not broaden blindly):
 
 ## Open Questions / TODO
 - Tune `expected_min` and lookback from skipped/new-row logs after more runs.
-- Re-enable `config/sites_paused.yaml` (unfaceted Workday + Arm) only with intern
-  facets / a `query`, or a higher Actions timeout.
-- Lattice Semiconductor is still live Workday without `applied_facets`.
-- `config/urls_skipped.txt` — add only with a known ATS/API.
+- MediaTek / MaxLinear / Siemens DISW / Wind River still lack a confirmed public
+  list API (`config/urls_skipped.txt`).
+- Lattice Semiconductor is still live Workday without `applied_facets` (group 1).
 - Tesla/Apple/Google bot walls from Actions IPs.
 - Optional: intern `query` on Phenom; real intern facets on large Workday boards
   once confirmed in the Network tab.

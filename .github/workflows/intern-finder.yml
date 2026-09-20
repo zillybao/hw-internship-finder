@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  scan:
+  scan_a:
+    name: Group 1 (sites.yaml)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -32,7 +33,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: state
-          key: seen-jobs-${{ github.run_id }}
+          key: seen-jobs-${{ github.run_id }}-a
           restore-keys: |
             seen-jobs-
 
@@ -45,7 +46,7 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           set +e
-          python -m src.run
+          python -m src.run --sites config/sites.yaml
           code=$?
           if [ "$code" -eq 0 ]; then
             exit 0
@@ -61,7 +62,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: state
-          key: seen-jobs-${{ github.run_id }}
+          key: seen-jobs-${{ github.run_id }}-a
 
       - name: Report planned sheet writes
         if: always()
@@ -102,6 +103,107 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run-logs
+          name: run-logs-a
+          path: logs/
+          if-no-files-found: ignore
+
+  scan_b:
+    name: Group 2 (sites_b.yaml)
+    needs: scan_a
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service-account credentials
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python -c "import os,pathlib; pathlib.Path('credentials.json').write_text(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON'], encoding='utf-8')"
+
+      - name: Restore seen-jobs cache
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: seen-jobs-${{ github.run_id }}-a
+          restore-keys: |
+            seen-jobs-
+
+      - name: Run scanner
+        env:
+          GOOGLE_SERVICE_ACCOUNT_FILE: credentials.json
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SHEET_WORKSHEET: ${{ secrets.GOOGLE_SHEET_WORKSHEET }}
+          GOOGLE_SHEET_SEEN_WORKSHEET: ${{ secrets.GOOGLE_SHEET_SEEN_WORKSHEET }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set +e
+          python -m src.run --sites config/sites_b.yaml
+          code=$?
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if [ "$code" -eq 1 ]; then
+            echo "::warning::Some group 2 career boards failed. New sheet rows were still written. Search the log for 'ERROR [run]'."
+            exit 0
+          fi
+          exit "$code"
+
+      - name: Save seen-jobs cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: seen-jobs-${{ github.run_id }}-b
+
+      - name: Report planned sheet writes
+        if: always()
+        run: |
+          log=$(ls logs/run-*.log 2>/dev/null | tail -1 || true)
+          if [ -z "$log" ]; then
+            msg="No run log found; scan may have failed before logging."
+            echo "$msg"
+            echo "::warning::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          progress=$(grep -E 'Progress: added=' "$log" | tail -1 || true)
+          flushed=$(grep -E ': flushed added=' "$log" || true)
+          done=$(grep -E 'Done: added=' "$log" | tail -1 || true)
+          if [ -n "$progress" ]; then
+            echo "$progress"
+            echo "::notice::$progress"
+            echo "$progress" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$flushed" ]; then
+            echo "$flushed"
+            echo "$flushed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$done" ]; then
+            echo "$done"
+            echo "::notice::$done"
+            echo "$done" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -z "$progress" ] && [ -z "$flushed" ] && [ -z "$done" ]; then
+            msg="No sheet-write progress in $log (scan likely timed out before the first company finished)."
+            echo "$msg"
+            echo "::warning::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-logs-b
           path: logs/
           if-no-files-found: ignore

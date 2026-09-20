@@ -26,15 +26,31 @@ class _FakeFetcher:
     def __init__(self, responses: dict[str, Any]) -> None:
         self.responses = responses
         self.calls: list[str] = []
+        self.post_payloads: list[dict[str, Any]] = []
 
-    def get_json(self, url: str) -> Any:
-        self.calls.append(url)
+    def _lookup(self, url: str) -> Any:
         if url in self.responses:
             return self.responses[url]
         for key, value in self.responses.items():
             if key in url:
                 return value
         raise KeyError(url)
+
+    def get_json(self, url: str) -> Any:
+        self.calls.append(url)
+        return self._lookup(url)
+
+    def get_text(self, url: str) -> str:
+        self.calls.append(url)
+        val = self._lookup(url)
+        if not isinstance(val, str):
+            raise TypeError(f"expected HTML for {url}")
+        return val
+
+    def post_json(self, url: str, payload: dict[str, Any]) -> Any:
+        self.calls.append(url)
+        self.post_payloads.append(payload)
+        return self._lookup(url)
 
 
 def test_parse_html_fixture_with_selector() -> None:
@@ -157,6 +173,42 @@ def test_greenhouse_detail_fetch_only_intern_titles() -> None:
     assert "firmware" in by_title["Avionics Intern"].description
 
 
+def test_workday_search_text_empty_without_query() -> None:
+    list_url = "https://example.wd1.myworkdayjobs.com/wday/cxs/example/External/jobs"
+    fetcher = _FakeFetcher({list_url: {"total": 0, "jobPostings": []}})
+    site = SiteConfig(
+        {
+            "company": "Example",
+            "url": "https://example.wd1.myworkdayjobs.com/External",
+            "ats": "workday",
+            "board": "External",
+            "workday_host": "example.wd1.myworkdayjobs.com",
+            "workday_tenant": "example",
+        }
+    )
+    parse_site(site, fetcher, today=date(2026, 9, 19))  # type: ignore[arg-type]
+    assert fetcher.post_payloads
+    assert fetcher.post_payloads[0]["searchText"] == ""
+
+
+def test_workday_search_text_uses_site_query() -> None:
+    list_url = "https://example.wd1.myworkdayjobs.com/wday/cxs/example/External/jobs"
+    fetcher = _FakeFetcher({list_url: {"total": 0, "jobPostings": []}})
+    site = SiteConfig(
+        {
+            "company": "Example",
+            "url": "https://example.wd1.myworkdayjobs.com/External",
+            "ats": "workday",
+            "board": "External",
+            "workday_host": "example.wd1.myworkdayjobs.com",
+            "workday_tenant": "example",
+            "query": "intern",
+        }
+    )
+    parse_site(site, fetcher, today=date(2026, 9, 19))  # type: ignore[arg-type]
+    assert fetcher.post_payloads[0]["searchText"] == "intern"
+
+
 def test_workday_location_appends_country_from_detail() -> None:
     india = {"country": {"descriptor": "India"}, "location": "Hyderabad"}
     assert _workday_location("Hyderabad", india) == "Hyderabad, India"
@@ -224,3 +276,77 @@ def test_eightfold_location_expands_iso_country() -> None:
     )
     assert "Germany" in munich
     assert not re.search(r",\s*DE$", munich)
+
+
+def test_successfactors_intern_only_detail_fetch() -> None:
+    list_html = """
+    <table>
+      <tr class="data-row">
+        <td class="colTitle">
+          <a class="jobTitle-link" href="/Teradyne/job/FPGA-Intern/1">FPGA Intern</a>
+        </td>
+        <td class="colLocation"><span class="jobLocation">North Reading, MA, US</span></td>
+      </tr>
+      <tr class="data-row">
+        <td class="colTitle">
+          <a class="jobTitle-link" href="/Teradyne/job/Staff-Engineer/2">Staff Engineer</a>
+        </td>
+        <td class="colLocation"><span class="jobLocation">San Jose, CA, US</span></td>
+      </tr>
+    </table>
+    """
+    intern_detail = '<div id="job-description"><p>RTL and firmware on FPGAs.</p></div>'
+    list_url = (
+        "https://jobs.teradyne.com/Teradyne/search/"
+        "?q=intern&sortColumn=referencedate&sortDirection=desc&startrow=0"
+    )
+    intern_url = "https://jobs.teradyne.com/Teradyne/job/FPGA-Intern/1"
+    staff_url = "https://jobs.teradyne.com/Teradyne/job/Staff-Engineer/2"
+    fetcher = _FakeFetcher({list_url: list_html, intern_url: intern_detail})
+    site = SiteConfig(
+        {
+            "company": "Teradyne",
+            "url": "https://jobs.teradyne.com/Teradyne",
+            "ats": "successfactors",
+            "query": "intern",
+        }
+    )
+    postings = parse_site(site, fetcher, today=date(2026, 9, 19))  # type: ignore[arg-type]
+    assert [p.title for p in postings] == ["FPGA Intern"]
+    assert "firmware" in postings[0].description
+    assert intern_url in fetcher.calls
+    assert staff_url not in fetcher.calls
+
+
+def test_icims_intern_only_detail_fetch() -> None:
+    list_html = """
+    <div>
+      <h3><a href="/jobs/23001/fpga-design-intern/job">FPGA Design Intern</a></h3>
+      <span class="iCIMS_JobHeaderData">US-CA-San Jose</span>
+      <h3><a href="/jobs/23002/principal-engineer/job">Principal Engineer</a></h3>
+    </div>
+    """
+    intern_detail = (
+        '<div class="iCIMS_JobContent"><p>embedded RTL for memory interfaces</p></div>'
+    )
+    list_url = (
+        "https://careers-rambus.icims.com/jobs/search"
+        "?ss=1&in_iframe=1&pr=0&searchKeyword=intern&searchRelation=keyword_all"
+    )
+    intern_url = "https://careers-rambus.icims.com/jobs/23001/fpga-design-intern/job"
+    staff_url = "https://careers-rambus.icims.com/jobs/23002/principal-engineer/job"
+    fetcher = _FakeFetcher({list_url: list_html, intern_url: intern_detail})
+    site = SiteConfig(
+        {
+            "company": "Rambus",
+            "url": "https://careers-rambus.icims.com",
+            "ats": "icims",
+            "query": "intern",
+        }
+    )
+    postings = parse_site(site, fetcher, today=date(2026, 9, 19))  # type: ignore[arg-type]
+    assert [p.title for p in postings] == ["FPGA Design Intern"]
+    assert "RTL" in postings[0].description
+    assert intern_url in fetcher.calls
+    assert staff_url not in fetcher.calls
+

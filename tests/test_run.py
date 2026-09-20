@@ -152,6 +152,31 @@ def test_paused_sites_are_not_lost() -> None:
     assert "Arm" in names
 
 
+def test_sites_b_yaml_group_two() -> None:
+    group_a = {s.company for s in load_sites(ROOT / "config" / "sites.yaml")}
+    group_b = load_sites(ROOT / "config" / "sites_b.yaml")
+    names = [s.company for s in group_b]
+    assert names[0] == "Broadcom"
+    assert "Arm" in names
+    assert "Cisco" in names
+    assert "Blue Origin" in names
+    assert "Monolithic Power" in names
+    assert "Wolfspeed" in names
+    assert "L3Harris" in names
+    assert "Qorvo" in names
+    assert "Skyworks" in names
+    assert "Teradyne" in names
+    assert "pSemi" in names
+    assert "Rambus" in names
+    assert "MaxLinear" in names
+    assert not group_a.intersection(names)
+    workday_queries = {s.company: s.query for s in group_b if s.ats == "workday"}
+    assert workday_queries["Broadcom"] == "intern"
+    assert workday_queries["Cisco"] == "intern"
+    arm = next(s for s in group_b if s.company == "Arm")
+    assert arm.query == "intern"
+
+
 def test_scan_budget_seconds_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SCAN_BUDGET_SECONDS", raising=False)
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)

@@ -1,13 +1,12 @@
 # Still need a dedicated/custom parser (not covered reliably by current ATS support).
-# Covered companies live in config/sites.yaml; duplicate career-page URLs for those
-# companies are omitted here.
+# Covered companies live in config/sites.yaml (group 1) or config/sites_b.yaml
+# (group 2); duplicate career-page URLs for those companies are omitted here.
 
 https://careers.mediatek.com/en/jobs?query=Internship
 https://careers.synaptics.com/search/jobs
 https://jobs.sw.siemens.com/jobs/
 https://careers.se.com/jobs?keywords=internship&page=1&sortBy=relevance
 https://www.gd.com/careers
-https://careers.l3harris.com/
 https://careers.saic.com/
 https://careers.mantech.com/
 https://careers.peraton.com/
@@ -26,29 +25,19 @@ https://www.ga-careers.com/
 https://www.kratosdefense.com/careers
 https://www.dynetics.com/careers
 https://www.capellaspace.com/careers/
-https://www.blueorigin.com/careers/
 https://www.lunaroutpost.com/careers/
 https://www.planet.com/company/careers/
 https://terranorbital.com/company/careers/
 https://ablspacesystems.com/careers/
 https://www.cirrus.com/careers/
-https://www.qorvo.com/company/careers
-https://www.maxlinear.com/company/careers
-https://www.skyworksinc.com/en/Careers
-https://www.monolithicpower.com/en/about-mps/careers
 https://www.macom.com/about/careers
 https://www.diodes.com/about/careers/
 https://www.vicorpower.com/careers
-https://www.rambus.com/company/careers/
 https://www.issi.com/US/careers.shtml
-https://careers.wolfspeed.com/
-https://www.psemi.com/careers
-https://www.seagate.com/company/careers/
 https://www.windriver.com/company/careers
 https://www.mathworks.com/company/jobs/
 https://www.ni.com/en/about-ni/careers.html
 https://www.rti.com/company/careers
-https://careers.teradyne.com/
 https://www.advantest.com/careers/
 https://careers.tek.com/
 https://www.fluke.com/en-us/fluke/careers
@@ -124,4 +113,3 @@ https://careers.lumentum.com/
 https://www.excelitas.com/careers
 https://www.osi-systems.com/careers/
 https://www.flir.com/careers/
-https://jobs.cisco.com/
