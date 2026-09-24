@@ -84,6 +84,7 @@ dist/                     # generated page (gitignored, not committed)
 state/
   seen_jobs.json          # local hash cache (gitignored)
   company_runs.json       # per-company run count
+  public_extra.json       # page-only graduate roles (gitignored)
 logs/
   run-YYYY-MM-DD.log
   skipped-YYYY-MM-DD.log  # intern titles dropped by location, date, education, or keywords
@@ -100,7 +101,8 @@ python -m src.run                                   # group 1, write to Google S
 python -m src.publish                               # sheet -> dist/, no deploy
 ```
 
-`--dry-run` does not persist `state/company_runs.json` or `seen_jobs.json`.
+`--dry-run` does not persist `state/company_runs.json`, `seen_jobs.json`, or
+`public_extra.json`.
 It still **reads** the sheet (when credentials exist) so already-written links
 are skipped in the preview.
 
@@ -249,7 +251,11 @@ scan cannot dump a backlog of month-old jobs that the first lookback skipped.
 Prefer original posted/created timestamps over `updated_at` so an old listing
 that was edited yesterday is still dropped.
 
-**Education filter** (`config/education.yaml`): conservative. Tune phrases from
+**Education filter** (`config/education.yaml`): conservative. `sheet: skip` (default)
+drops graduate-only roles before the sheet append. Keyword matches from that
+drop are stored in gitignored `state/public_extra.json` and shown on the public
+page only (not `_seen`). `sheet: include` keeps them for the sheet when the
+other filters match. Tune phrases from
 skipped/new-row logs. Do not drop on the word “graduate” alone.
 
 **Log-only buffer:** `first_seen_runs: 0` on current sites, so keyword misses
@@ -360,6 +366,10 @@ on `--dry-run`). With `first_seen_runs: 0` it does not keep keyword misses.
 ## Education filter (post-undergrad)
 v1 is phrase-based and conservative (`config/education.yaml`):
 
+- `sheet: skip` (default) drops graduate-only roles before the sheet append.
+  Keyword matches are written to `state/public_extra.json` for the public page
+  only. `sheet: include` writes them to the sheet when location, date, and
+  keywords also match.
 - Drop titles like `PhD Intern` / `postdoctoral`.
 - Drop descriptions that require a master’s/PhD or already-graduated **unless**
   a bachelor/undergrad phrase is also present (`Bachelor's or above`, `BS/MS`).

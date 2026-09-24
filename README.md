@@ -39,7 +39,7 @@ Do not commit secrets. A fork should use its own spreadsheet and its own Actions
 - Title-gates on intern / co-op **before** fetching descriptions.
 - Drops postings whose location is clearly non-US (`config/locations.yaml`). Empty / remote / unknown city-only locations are kept; known foreign hubs (Shanghai, Linz, …) are dropped even without a country name.
 - Drops dated postings older than 3 days. Undated postings are kept.
-- Drops internships that are clearly post-undergrad only (`config/education.yaml`).
+- Drops graduate-only internships from the sheet when `config/education.yaml` says `sheet: skip`. Keyword matches among those skips are still shown on the public page. Set `sheet: include` to append them to the sheet instead.
 - Keeps a posting only if the description matches a keyword in `config/keywords.yaml` (token match, so `asic` does not match `basic`). The matched keywords are stored on the new sheet row and shown on the public page. Spelling variants such as `micro-controller` collapse to `microcontroller`.
 - Dedupes on the canonical job link. New matches are flushed to the sheet after each company (so a timeout still keeps earlier finds); history is never overwritten.
 - Marks previously `open` / `applied` rows `closed` when that link disappears from the company’s live intern-titled set. Closed and expired rows drop off the public page on the next publish. A failed company scan does not mark that company closed.
@@ -165,6 +165,13 @@ Before adding a company: confirm `robots.txt` / ToS, prefer a public JSON list A
 
 **Keywords** — edit `config/keywords.yaml`. A posting is kept if the description contains any of: `embedded`, `firmware`, `asic`, `fpga`, `rtl`, `mcu`, `microcontroller`. Matching is case-insensitive **token** match on the **body**, not the title (plurals like `ASICs` still count). `aliases` map other spellings onto those names.
 
+**Graduate roles** — edit `sheet` in `config/education.yaml`. This is the switch for a clone:
+
+- `skip` (this repo’s default): do not append graduate-only roles. That means a PhD/doctoral title, or a description that requires a master’s/PhD or an already-finished degree and never offers a bachelor’s path. “Graduate Intern” and “Bachelor’s or above” are still written. Keyword-matching graduate roles still show on the public page. They are not added to the sheet or the `_seen` tab.
+- `include`: append those roles when they also match the US location, 3-day date, and keyword filters. The page then gets them from the sheet.
+
+Change that one line. Leave `title_drop` and `graduate_required` as they are; those lists are the definition of graduate-only.
+
 **Public retention** — edit `retain_days` in `config/public.yaml`. This only affects the page. The sheet is not cleared when a listing expires.
 
 **Locations** — edit `config/locations.yaml`. Drop listings that name a foreign country with no US signal; a US country/state/`City, ST` match wins (`US and Canada` is kept). Keep ambiguous/empty locations. Location stays on the sheet and is not on the public page.
@@ -184,8 +191,8 @@ src/publish.py         # private sheet → allowlisted dist/listings.js
 src/parse.py           # ATS parsers
 site/                  # static page; sample listings.js is fake
 dist/                  # generated page (gitignored)
-state/                 # seen hashes + per-company run counts (gitignored)
+state/                 # seen hashes, run counts, page-only graduate catalog (gitignored)
 logs/
 ```
 
-Agent-oriented design 
+Agent-oriented design notes live in [`AGENTS.md`](AGENTS.md). 

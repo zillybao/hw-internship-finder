@@ -242,3 +242,18 @@ def test_education_drops_grad_only_keeps_bachelor_or_above() -> None:
     kept, skipped = filter_by_education(posts, rules)
     assert [p.title for p in kept] == ["Eng Intern"]
     assert [p.title for p in skipped] == ["PhD Intern"]
+    assert rules.sheet == "skip"
+
+
+def test_education_sheet_include_keeps_grad_only(tmp_path: Path) -> None:
+    path = tmp_path / "education.yaml"
+    path.write_text(
+        "sheet: include\ntitle_drop:\n  - phd intern\ngraduate_required: []\nundergrad_ok: []\n",
+        encoding="utf-8",
+    )
+    rules = load_education_filter(path)
+    posts = [_posting("PhD Intern", "FPGA and RTL")]
+    kept, skipped = filter_by_education(posts, rules)
+    assert rules.sheet == "include"
+    assert [p.title for p in kept] == ["PhD Intern"]
+    assert skipped == []

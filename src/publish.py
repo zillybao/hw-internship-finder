@@ -16,12 +16,15 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+from src.dedupe import normalize_link
+from src.public_extra import PublicExtraCatalog
 from src.sheet import JobSheet, SheetError
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "public.yaml"
 SITE_DIR = ROOT / "site"
 DIST_DIR = ROOT / "dist"
+PUBLIC_EXTRA_PATH = ROOT / "state" / "public_extra.json"
 
 PUBLIC_LISTING_KEYS = ("company", "title", "link", "date_posted", "keywords")
 PUBLIC_PAYLOAD_KEYS = ("updated", "listings")
@@ -116,12 +119,56 @@ def select_public_listings(
     return selected
 
 
+def listings_from_extra(
+    entries: list[dict[str, object]],
+    *,
+    today: date,
+    retain_days: int,
+) -> list[dict[str, Any]]:
+    """Catalog rows through the same retention and allowlist as sheet rows."""
+    rows: list[dict[str, str]] = []
+    for entry in entries:
+        keywords = entry.get("keywords") or []
+        if isinstance(keywords, str):
+            keyword_text = keywords
+        else:
+            keyword_text = ", ".join(str(keyword) for keyword in keywords)
+        rows.append(
+            {
+                "company": str(entry.get("company") or ""),
+                "title": str(entry.get("title") or ""),
+                "link": str(entry.get("link") or ""),
+                "status": "open",
+                "date_found": str(entry.get("date_found") or ""),
+                "date_posted": str(entry.get("date_posted") or ""),
+                "matched_keywords": keyword_text,
+            }
+        )
+    return select_public_listings(rows, today=today, retain_days=retain_days)
+
+
+def merge_public_listings(
+    sheet_listings: list[dict[str, Any]],
+    extra_listings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Combine page rows. A sheet row wins when the link is in both."""
+    merged: dict[str, dict[str, Any]] = {}
+    for item in extra_listings:
+        merged[normalize_link(str(item["link"]))] = item
+    for item in sheet_listings:
+        merged[normalize_link(str(item["link"]))] = item
+    selected = list(merged.values())
+    selected.sort(key=lambda item: item["date_posted"] or "", reverse=True)
+    return selected
+
+
 def build_public_payload(
     rows: list[dict[str, str]],
     *,
     today: date,
     retain_days: int,
     updated: datetime | None = None,
+    extra_entries: list[dict[str, object]] | None = None,
 ) -> dict[str, Any]:
     """Allowlisted page payload. Raises if a listing picks up any other key."""
     moment = updated or datetime.now(timezone.utc)
@@ -129,9 +176,15 @@ def build_public_payload(
         moment = moment.replace(tzinfo=timezone.utc)
     stamp = moment.astimezone(timezone.utc).replace(microsecond=0).isoformat()
     stamp = stamp.replace("+00:00", "Z")
+    sheet_listings = select_public_listings(rows, today=today, retain_days=retain_days)
+    extra_listings = listings_from_extra(
+        extra_entries or [],
+        today=today,
+        retain_days=retain_days,
+    )
     payload = {
         "updated": stamp,
-        "listings": select_public_listings(rows, today=today, retain_days=retain_days),
+        "listings": merge_public_listings(sheet_listings, extra_listings),
     }
     assert_public_payload(payload)
     return payload
@@ -180,14 +233,17 @@ def publish_from_sheet(
     retain_days: int | None = None,
     dist_dir: Path = DIST_DIR,
     public_config: Path = CONFIG_PATH,
+    extra_path: Path = PUBLIC_EXTRA_PATH,
 ) -> dict[str, Any]:
     """Read the private sheet and write the public site. Does not deploy."""
     sheet = JobSheet(read_only=True)
     rows = sheet.all_rows()
+    extra = PublicExtraCatalog.load(extra_path)
     payload = build_public_payload(
         rows,
         today=today or date.today(),
         retain_days=load_retain_days(public_config) if retain_days is None else retain_days,
+        extra_entries=extra.listings,
     )
     write_site(payload, dist_dir=dist_dir)
     return payload

@@ -10,6 +10,7 @@ service_account.json
 logs/*.log
 state/seen_jobs.json
 state/company_runs.json
+state/public_extra.json
 dist/
 .DS_Store
 *.egg-info/

@@ -166,5 +166,57 @@ def test_write_site_copies_page(tmp_path: Path) -> None:
     assert "window.LISTINGS" in (dist / "listings.js").read_text(encoding="utf-8")
 
 
+def test_payload_merges_graduate_catalog_and_drops_expired() -> None:
+    extra = [
+        {
+            "company": "Grad Co",
+            "title": "FPGA Intern",
+            "link": "https://example.com/jobs/grad",
+            "date_posted": "2026-09-20",
+            "date_found": "2026-09-22",
+            "keywords": ["fpga"],
+            "source_page": "https://example.com/careers",
+            "description": "must not leak",
+        },
+        {
+            "company": "Old Grad",
+            "title": "ASIC Intern",
+            "link": "https://example.com/jobs/old-grad",
+            "date_posted": "2026-09-01",
+            "date_found": "2026-09-02",
+            "keywords": ["asic"],
+            "source_page": "https://example.com/careers",
+        },
+        {
+            "company": "Sheet Wins",
+            "title": "From the sheet",
+            "link": "https://example.com/jobs/1",
+            "date_posted": "2026-09-19",
+            "date_found": "2026-09-22",
+            "keywords": ["firmware"],
+            "source_page": "https://example.com/careers",
+        },
+    ]
+    payload = build_public_payload(
+        [_row()],
+        today=TODAY,
+        retain_days=RETAIN,
+        updated=datetime(2026, 9, 24, tzinfo=timezone.utc),
+        extra_entries=extra,
+    )
+    by_link = {item["link"]: item for item in payload["listings"]}
+    assert set(by_link) == {
+        "https://example.com/jobs/1",
+        "https://example.com/jobs/grad",
+    }
+    assert by_link["https://example.com/jobs/1"]["title"] == "Firmware Intern"
+    grad = by_link["https://example.com/jobs/grad"]
+    assert set(grad) == {"company", "title", "link", "date_posted", "keywords"}
+    blob = render_listings_js(payload)
+    assert "source_page" not in blob
+    assert "must not leak" not in blob
+    assert "Old Grad" not in blob
+
+
 def test_load_retain_days_default() -> None:
     assert load_retain_days(Path(__file__).resolve().parent.parent / "config" / "public.yaml") == 14

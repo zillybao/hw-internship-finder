@@ -33,6 +33,7 @@ from src.filter import (
 from src.models import JobPosting
 from src.notify import notify_failures, notify_new_postings
 from src.parse import SiteConfig, parse_site
+from src.public_extra import PublicExtraCatalog, sync_graduate_catalog
 from src.sheet import JobSheet, SheetError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -45,6 +46,7 @@ LOCATIONS_PATH = CONFIG_DIR / "locations.yaml"
 EDUCATION_PATH = CONFIG_DIR / "education.yaml"
 SEEN_PATH = STATE_DIR / "seen_jobs.json"
 COMPANY_STATE_PATH = STATE_DIR / "company_runs.json"
+PUBLIC_EXTRA_PATH = STATE_DIR / "public_extra.json"
 # Leave a few minutes before GitHub's 30m job timeout so Done/Progress logs flush.
 ACTIONS_SCAN_BUDGET_SECONDS = 26 * 60
 
@@ -161,6 +163,7 @@ def run(
     education = load_education_filter(EDUCATION_PATH)
     company_state = _load_company_state()
     cache = SeenJobsCache(SEEN_PATH)
+    extra = PublicExtraCatalog.load(PUBLIC_EXTRA_PATH)
     known_hashes: set[str] = set(cache.known_hashes())
     log.info("Dedupe: %s identit(y/ies) from local cache", len(known_hashes))
 
@@ -288,11 +291,32 @@ def run(
             undergrad, grad_only = filter_by_education(dated, education)
             if grad_only:
                 log.info(
-                    "%s: dropped %s post-undergrad posting(s)",
+                    "%s: dropped %s post-undergrad posting(s) from the sheet",
                     site.company,
                     len(grad_only),
                 )
                 _log_skipped(grad_only, today)
+
+            page_grad, _grad_misses = sync_graduate_catalog(
+                extra,
+                source_page=site.url,
+                live_links=live_links,
+                grad_only=grad_only,
+                keywords=keywords,
+                aliases=keyword_aliases,
+                today=today,
+            )
+            if not dry_run:
+                try:
+                    extra.save()
+                except OSError as exc:
+                    log.error("%s: graduate page catalog save failed: %s", site.company, exc)
+            if page_grad:
+                log.info(
+                    "%s: %s graduate role(s) kept for the public page",
+                    site.company,
+                    len(page_grad),
+                )
 
             kept, skipped = filter_by_description(
                 undergrad,

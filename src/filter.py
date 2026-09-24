@@ -228,10 +228,14 @@ class EducationFilter:
     title_drop_patterns: tuple[re.Pattern[str], ...]
     graduate_required_patterns: tuple[re.Pattern[str], ...]
     undergrad_ok_patterns: tuple[re.Pattern[str], ...]
+    sheet: str = "skip"
 
     @classmethod
     def from_yaml(cls, path: Path) -> EducationFilter:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        sheet = str(data.get("sheet") or "skip").strip().lower()
+        if sheet not in {"skip", "include"}:
+            raise ValueError("education.yaml sheet must be 'skip' or 'include'")
         return cls(
             title_drop_patterns=tuple(
                 _phrase_pattern(str(p)) for p in (data.get("title_drop") or [])
@@ -242,6 +246,7 @@ class EducationFilter:
             undergrad_ok_patterns=tuple(
                 _phrase_pattern(str(p)) for p in (data.get("undergrad_ok") or [])
             ),
+            sheet=sheet,
         )
 
     def is_post_undergrad_only(self, title: str, description: str) -> bool:
@@ -264,7 +269,13 @@ def filter_by_education(
     postings: list[JobPosting],
     rules: EducationFilter,
 ) -> tuple[list[JobPosting], list[JobPosting]]:
-    """Split postings into (kept, skipped) by graduate-only requirements."""
+    """Split postings into (kept, skipped) by graduate-only requirements.
+
+    ``sheet: include`` keeps every posting. The phrase lists still define
+    graduate-only, but those roles are not dropped.
+    """
+    if rules.sheet == "include":
+        return list(postings), []
     kept: list[JobPosting] = []
     skipped: list[JobPosting] = []
     for posting in postings:

@@ -1,10 +1,19 @@
 # Conservative post-undergrad filter. Tune this file, not filter.py.
 #
-# Drop when:
+# sheet: skip | include
+#   skip (default): do not append graduate-only roles to the Google Sheet.
+#     Keyword matches still appear on the public page.
+#   include: append them when they also match location, date, and keywords.
+#     They reach the page through the sheet, not the page-only catalog.
+# A clone changes this one line. Leave the phrase lists in place either way;
+# they define which roles are graduate-only.
+#
+# Graduate-only means:
 #   - the title is clearly a PhD / doctoral intern, OR
 #   - the description requires a master's/PhD / already-graduated and has
 #     no bachelor / undergraduate alternative.
-# Keep "Graduate Intern" titles (often BS seniors) and "Bachelor's or above".
+# "Graduate Intern" titles (often BS seniors) and "Bachelor's or above" are kept.
+sheet: skip
 
 title_drop:
   - phd intern
