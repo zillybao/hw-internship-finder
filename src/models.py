@@ -22,6 +22,7 @@ class JobPosting:
     status: Status = "open"
     date_found: date | None = None
     date_posted: date | None = None
+    matched_keywords: list[str] = field(default_factory=list)
 
     def sheet_row(self) -> list[str]:
         """Columns written to the spreadsheet (description intentionally omitted)."""
@@ -34,6 +35,7 @@ class JobPosting:
             self.date_found.isoformat() if self.date_found else "",
             self.date_posted.isoformat() if self.date_posted else "",
             self.source_page,
+            ", ".join(self.matched_keywords),
         ]
 
 
@@ -46,7 +48,8 @@ SHEET_HEADERS: list[str] = [
     "date_found",
     "date_posted",
     "source_page",
+    "matched_keywords",
 ]
 
 # Bump when column layout changes; stored in sheet metadata / A1 comment contract.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2

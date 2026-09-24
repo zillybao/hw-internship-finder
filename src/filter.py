@@ -103,20 +103,82 @@ def load_keywords(path: Path) -> list[str]:
     return [str(k).lower() for k in keywords]
 
 
-def matches_keywords(text: str, keywords: Iterable[str]) -> bool:
+def load_keyword_aliases(path: Path) -> dict[str, str]:
+    """Map alternate spellings to a canonical keyword. Missing section is empty."""
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        return {}
+    raw = data.get("aliases") or {}
+    if not isinstance(raw, dict):
+        return {}
+    aliases: dict[str, str] = {}
+    for key, value in raw.items():
+        alias = str(key).lower().strip()
+        canonical = str(value).lower().strip()
+        if alias and canonical:
+            aliases[alias] = canonical
+    return aliases
+
+
+def _keyword_token_hit(haystack: str, needle: str) -> bool:
+    """Token match. A trailing ``s`` is allowed so ``ASICs`` hits ``asic``."""
+    if not needle:
+        return False
+    return (
+        re.search(rf"(?<![a-z0-9]){re.escape(needle)}s?(?![a-z0-9])", haystack) is not None
+    )
+
+
+def matched_keywords(
+    text: str,
+    keywords: Iterable[str],
+    aliases: dict[str, str] | None = None,
+) -> list[str]:
+    """Canonical keywords that hit ``text``, in ``keywords`` file order.
+
+    Alias spellings collapse onto their target and are not listed separately.
+    An alias whose target is not in ``keywords`` is ignored.
+    """
+    haystack = (text or "").lower()
+    alias_map = {
+        str(key).lower().strip(): str(value).lower().strip()
+        for key, value in (aliases or {}).items()
+        if str(key).strip() and str(value).strip()
+    }
+    ordered: list[str] = []
+    needles: dict[str, list[str]] = {}
+    for raw in keywords:
+        name = str(raw).lower().strip()
+        if not name:
+            continue
+        canonical = alias_map.get(name, name)
+        if canonical not in needles:
+            needles[canonical] = []
+            ordered.append(canonical)
+        if name not in needles[canonical]:
+            needles[canonical].append(name)
+    for alias, canonical in alias_map.items():
+        if canonical not in needles or alias in needles[canonical]:
+            continue
+        needles[canonical].append(alias)
+    found: list[str] = []
+    for canonical in ordered:
+        if any(_keyword_token_hit(haystack, needle) for needle in needles[canonical]):
+            found.append(canonical)
+    return found
+
+
+def matches_keywords(
+    text: str,
+    keywords: Iterable[str],
+    aliases: dict[str, str] | None = None,
+) -> bool:
     """Case-insensitive token match against any keyword.
 
     Requires a word boundary so ``asic`` does not match ``basic``.
     A trailing ``s`` is allowed (``ASICs``, ``FPGAs``).
     """
-    haystack = text.lower()
-    for keyword in keywords:
-        needle = keyword.lower().strip()
-        if not needle:
-            continue
-        if re.search(rf"(?<![a-z0-9]){re.escape(needle)}s?(?![a-z0-9])", haystack):
-            return True
-    return False
+    return bool(matched_keywords(text, keywords, aliases))
 
 
 def title_matches(title: str, title_keywords: list[str] | None) -> bool:
@@ -218,6 +280,7 @@ def filter_by_description(
     keywords: list[str],
     *,
     log_only: bool = False,
+    aliases: dict[str, str] | None = None,
 ) -> tuple[list[JobPosting], list[JobPosting]]:
     """Split postings into (kept, skipped) by description keyword match.
 
@@ -227,7 +290,7 @@ def filter_by_description(
     kept: list[JobPosting] = []
     skipped: list[JobPosting] = []
     for posting in postings:
-        if matches_keywords(posting.description, keywords):
+        if matches_keywords(posting.description, keywords, aliases):
             kept.append(posting)
         else:
             skipped.append(posting)

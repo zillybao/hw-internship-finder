@@ -24,8 +24,10 @@ from src.filter import (
     filter_by_posted_date,
     filter_by_us_location,
     load_education_filter,
+    load_keyword_aliases,
     load_keywords,
     load_us_location_filter,
+    matched_keywords,
     strip_descriptions,
 )
 from src.models import JobPosting
@@ -154,6 +156,7 @@ def run(
 
     sites = load_sites(sites_path)
     keywords = load_keywords(keywords_path)
+    keyword_aliases = load_keyword_aliases(keywords_path)
     us_locations = load_us_location_filter(LOCATIONS_PATH)
     education = load_education_filter(EDUCATION_PATH)
     company_state = _load_company_state()
@@ -295,6 +298,7 @@ def run(
                 undergrad,
                 keywords,
                 log_only=log_only_filter,
+                aliases=keyword_aliases,
             )
             if log_only_filter and skipped:
                 log.info(
@@ -305,6 +309,12 @@ def run(
             _log_skipped(skipped if not log_only_filter else skipped, today)
 
             new_postings = [p for p in kept if not is_known_link(p.link, known_hashes)]
+            for posting in new_postings:
+                posting.matched_keywords = matched_keywords(
+                    posting.description,
+                    keywords,
+                    keyword_aliases,
+                )
             strip_descriptions(new_postings)
             log.info(
                 "%s: %s parsed, %s non-US, %s too old, %s grad-only, %s kept after keywords, %s new (%.1fs)",

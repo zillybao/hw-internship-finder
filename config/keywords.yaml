@@ -1,5 +1,6 @@
-# Description-body keywords (case-insensitive substring match).
+# Description-body keywords (case-insensitive token match).
 # A posting is kept only if its description matches at least one of these.
+# `aliases` collapse alternate spellings onto a keyword above (file order).
 keywords:
   - embedded
   - firmware
@@ -8,6 +9,23 @@ keywords:
   - rtl
   - mcu
   - microcontroller
-  - micro-controller
-  - micro-controllers
-  - microcontrollers
+  - verilog
+  - system verilog
+  - vhdl
+  - uvm
+  - vlsi
+  - cmos
+  - integrated circuit
+  - risc-v
+  - rtos
+  - mixed-signal
+aliases:
+  micro-controller: microcontroller
+  micro-controllers: microcontroller
+  microcontrollers: microcontroller
+  mixed signal: mixed-signal
+  freertos: rtos
+  zephyr: rtos
+  riscv: risc-v
+  system verilog: systemverilog
+  system-verilog: systemverilog

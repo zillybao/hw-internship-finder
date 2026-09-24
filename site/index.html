@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Intern Finder</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --paper: #fafaf9;
+      --card: #ffffff;
+      --link: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.45;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    .lede, .meta, footer {
+      color: var(--muted);
+    }
+    .lede { margin: 0 0 1rem; max-width: 40rem; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: center;
+      margin: 1.25rem 0;
+    }
+    label { font-size: 0.9rem; }
+    input[type="search"] {
+      font: inherit;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      min-width: 16rem;
+      background: var(--card);
+    }
+    .table-wrap {
+      overflow-x: auto;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.85rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: #f5f5f4;
+    }
+    tr:last-child td { border-bottom: 0; }
+    a { color: var(--link); }
+    .empty, .error {
+      margin: 0;
+      padding: 1.25rem 0.85rem;
+    }
+    caption {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    footer {
+      margin-top: 1.5rem;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Intern Finder</h1>
+    <p class="lede">Embedded, firmware, ASIC, FPGA, and RTL internships collected from public career boards.</p>
+    <p class="meta" id="updated">Updated —</p>
+    <div class="toolbar">
+      <label for="filter">Filter <input id="filter" type="search" placeholder="Company, role, or keyword" autocomplete="off"></label>
+      <span class="meta" id="count"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption>Open internships</caption>
+        <thead>
+          <tr>
+            <th scope="col">Company</th>
+            <th scope="col">Role</th>
+            <th scope="col">Apply</th>
+            <th scope="col">Date posted</th>
+            <th scope="col">Keywords</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <footer>
+      This is an aggregator of public job links, not an application form.
+      Fork the project, use your own sheet and secrets, and edit
+      <code>config/keywords.yaml</code> to remix the filters.
+      Listings leave this table when the company takes them down or they pass the retention window.
+    </footer>
+  </main>
+  <script src="listings.js"></script>
+  <script>
+    const data = window.LISTINGS || { updated: null, listings: [] };
+    const listings = Array.isArray(data.listings) ? data.listings : [];
+    const updated = document.getElementById("updated");
+    const count = document.getElementById("count");
+    const tbody = document.getElementById("rows");
+    const filter = document.getElementById("filter");
+
+    function text(value) {
+      return value == null ? "" : String(value);
+    }
+
+    function keywordsOf(row) {
+      return Array.isArray(row.keywords) ? row.keywords.map(text).filter(Boolean) : [];
+    }
+
+    function postedLabel(value) {
+      return text(value).trim() || "Not listed";
+    }
+
+    if (!window.LISTINGS) {
+      updated.textContent = "Listings file missing.";
+    } else if (data.updated) {
+      const when = new Date(data.updated);
+      updated.textContent = Number.isNaN(when.getTime())
+        ? "Updated " + text(data.updated)
+        : "Updated " + when.toLocaleString();
+    } else {
+      updated.textContent = "Not updated yet.";
+    }
+
+    function render(query) {
+      const needle = query.trim().toLowerCase();
+      const visible = listings.filter(function (row) {
+        if (!needle) return true;
+        const blob = [
+          text(row.company),
+          text(row.title),
+          postedLabel(row.date_posted),
+          keywordsOf(row).join(" ")
+        ].join(" ").toLowerCase();
+        return blob.indexOf(needle) !== -1;
+      });
+      tbody.replaceChildren();
+      if (!visible.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.className = "empty";
+        td.textContent = listings.length
+          ? "No listings match that filter."
+          : "No open listings right now.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      } else {
+        visible.forEach(function (row) {
+          const tr = document.createElement("tr");
+          const company = document.createElement("td");
+          company.textContent = text(row.company);
+          const role = document.createElement("td");
+          role.textContent = text(row.title);
+          const apply = document.createElement("td");
+          const link = text(row.link).trim();
+          if (link) {
+            const a = document.createElement("a");
+            a.href = link;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = "Apply";
+            apply.appendChild(a);
+          }
+          const posted = document.createElement("td");
+          posted.textContent = postedLabel(row.date_posted);
+          const keywords = document.createElement("td");
+          keywords.textContent = keywordsOf(row).join(", ");
+          tr.append(company, role, apply, posted, keywords);
+          tbody.appendChild(tr);
+        });
+      }
+      count.textContent = visible.length + (visible.length === 1 ? " listing" : " listings");
+    }
+
+    filter.addEventListener("input", function () {
+      render(filter.value);
+    });
+    render("");
+  </script>
+</body>
+</html>

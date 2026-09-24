@@ -38,9 +38,11 @@ Supported `ats` values: `greenhouse`, `lever`, `ashby`, `workday`, `eightfold`,
 - Match **description body** against `config/keywords.yaml` (not title alone).
 - Drop listings whose location is clearly non-US (`config/locations.yaml`).
 - Append only *new* postings — never duplicate, never overwrite history, never write
-  description text to the sheet.
+  description text to the sheet or the public page. Never write status, location,
+  source page, or credentials to the page.
 - Mark previously `open`/`applied` rows `closed` when the link disappears from that
-  company’s live intern-titled set.
+  company’s live intern-titled set. The public page drops `closed` rows and rows
+  older than `config/public.yaml` `retain_days`. The sheet row stays.
 - Run unattended; a single site failure must not abort the rest. Fail loudly in logs
   (and Slack, if configured).
 
@@ -60,12 +62,14 @@ config/
   sites_b.yaml            # group 2 (intern-narrowed Workday/Arm + elected adds)
   sites_paused.yaml       # archive of pre-split unfaceted boards (not scanned)
   keywords.yaml           # description-body keywords
+  public.yaml             # public-page retention (retain_days)
   locations.yaml          # US vs non-US location filter
   education.yaml          # post-undergrad / graduate-only drop phrases
   urls.txt                # original URL inventory
   urls_skipped.txt        # not yet parsed
 src/
   run.py                  # fetch -> parse -> filter -> dedupe -> sheet
+  publish.py              # private sheet -> allowlisted site payload
   fetch.py                # sequential httpx client, retry, split delays
   parse.py                # ATS parsers -> list[JobPosting]
   filter.py               # title noise + US location + date + education + keywords
@@ -73,6 +77,10 @@ src/
   sheet.py                # Google Sheets read/append/mark-closed
   models.py               # JobPosting, SHEET_HEADERS, SCHEMA_VERSION
   notify.py               # optional Slack digest
+site/
+  index.html              # public table (company, role, link, date, keywords)
+  listings.js             # committed sample only; real data is generated into dist/
+dist/                     # generated page (gitignored, not committed)
 state/
   seen_jobs.json          # local hash cache (gitignored)
   company_runs.json       # per-company run count
@@ -89,6 +97,7 @@ Run locally (project root; do not use an empty `.venv`):
 python -m src.run --dry-run                         # group 1
 python -m src.run --sites config/sites_b.yaml --dry-run
 python -m src.run                                   # group 1, write to Google Sheets
+python -m src.publish                               # sheet -> dist/, no deploy
 ```
 
 `--dry-run` does not persist `state/company_runs.json` or `seen_jobs.json`.
@@ -130,8 +139,9 @@ are skipped in the preview.
    or already-graduated with no bachelor/undergrad alternative. Keep
    “Graduate Intern” titles and “Bachelor’s or above”.
 6. **Keyword-filter** the description in memory against `config/keywords.yaml`
-   (token match, so `asic` does not match `basic`). Strip `description` before
-   any sheet/cache write.
+   (token match, so `asic` does not match `basic`). Store the canonical hits on
+   `matched_keywords`, then strip `description` before any sheet/cache write.
+   Do not write the description or `status` to the public page.
 7. **Dedupe** vs sheet rows ∪ `seen_jobs.json` using URL identity hashes
    (normalized link plus host aliases, locale-stripped paths, and ATS req ids).
    After each company, **flush** that company’s new rows and closed-status updates
@@ -165,17 +175,21 @@ Each posting normalizes to:
 | title        | str    | job title |
 | link         | str    | canonical URL — primary dedupe key |
 | location     | str    | optional, best-effort |
-| description  | str    | in-memory only for keyword match; **never written to the sheet** |
-| status       | str    | `open` / `applied` / `closed` — script sets open/closed; `applied` is manual |
+| description       | str    | in-memory only for keyword match; **never written to the sheet or the page** |
+| matched_keywords  | list   | canonical keywords that hit the description; comma-separated in column I |
+| status            | str    | `open` / `applied` / `closed` — script sets open/closed; `applied` is manual; **never written to the page** |
 | date_found   | date   | when this run first kept it |
 | date_posted  | date   | optional; ISO, epoch, Workday “Posted N Days Ago”, Amazon `"July 29, 2026"` |
 | source_page  | str    | `url` from the site YAML (also the key for closed-status checks) |
 
-Sheet columns (`SCHEMA_VERSION = 1`): `company`, `title`, `link`, `location`,
-`status`, `date_found`, `date_posted`, `source_page`. Headers live in A–H only;
-do not write sentinels outside that table (a value in Z1 made `append_rows`
-land in column Z). Pin appends with `table_range="A1"`. A second tab `_seen`
-stores links already shown; wiping the inbox tab does not revive them.
+Sheet columns (`SCHEMA_VERSION = 2`): `company`, `title`, `link`, `location`,
+`status`, `date_found`, `date_posted`, `source_page`, `matched_keywords`.
+Headers live in A–I. Append `matched_keywords` as column I; do not insert it
+into A–H (a value in Z1 made `append_rows` land in column Z). Pin appends with
+`table_range="A1"`. The public page is built from the sheet by `src/publish.py`
+and may contain only `company`, `title`, `link`, `date_posted`, and `keywords`.
+A second tab `_seen` stores links already shown; wiping the inbox tab does not
+revive them.
 
 ## Spreadsheet Contract
 - Inbox tab (`GOOGLE_SHEET_WORKSHEET`, default `Sheet1`): working queue. Safe to
@@ -200,8 +214,11 @@ stores links already shown; wiping the inbox tab does not revive them.
 Keep a posting only if its **description** contains at least one keyword from
 `config/keywords.yaml` (case-insensitive **token** match; optional trailing `s`):
 
-`embedded`, `firmware`, `asic`, `fpga`, `rtl`, `mcu`, `microcontroller`,
-`micro-controller`, `micro-controllers`, `microcontrollers`
+`embedded`, `firmware`, `asic`, `fpga`, `rtl`, `mcu`, `microcontroller`
+
+`aliases` in that file collapse other spellings (`micro-controller`,
+`microcontrollers`) onto `microcontroller`. Record every canonical hit, in file
+order, on the posting before stripping the description.
 
 Tune that file, not `parse.py`. Title-only matching misses “Software Engineering
 Intern” roles whose FPGA/RTL work is in the body. Do not use raw substring match
@@ -244,6 +261,9 @@ set. Sheet rows for that source with status `open` or `applied` whose normalized
 link is missing are set to `closed` (row kept). Never move `applied` back to
 `open`. Closed-status uses the title-filtered live set, not the keyword/date/education-filtered
 set — a still-posted intern that fails later filters is not marked closed.
+The public page drops `closed` rows and rows older than `retain_days`.
+`applied` is not copied to the page; the role stays listed until it is closed
+or expires.
 
 ## Reliability & Site Health
 - Sequential requests only; split JSON vs HTML delays (see Methods).
@@ -263,7 +283,9 @@ short end-of-run digest of new rows and of per-site failures; it is not required
 
 ## Scheduling
 - Cadence: 2 workflow runs/day. Cron: `0 8,20 * * *` UTC. Each run is two
-  sequential jobs (group 1 then group 2), same sheet.
+  sequential scan jobs (group 1 then group 2), same sheet, then a separate
+  Pages job that deploys the allowlisted table. A Pages failure does not fail
+  the sheet scans. Generated `dist/` is not committed.
 - Each job is a **full scan** of that group’s YAML (idempotent writes).
 - Prefer GitHub Actions or cron over an always-on process.
 - Actions does not read `.env`. Required repo secrets: `GOOGLE_SERVICE_ACCOUNT_JSON`
@@ -319,8 +341,10 @@ locale/req ids, HYPERLINK cells), keyword token match, US location filter, 3-day
 lookback, education filter, Greenhouse intern-only detail fetches,
 TalentBrew card HTML, Workday `searchText` from `query`, SuccessFactors/iCIMS intern-only
 details, Amazon-style dates, spreadsheet-ID extraction from a
-docs URL, blank `GOOGLE_SHEET_WORKSHEET` → `Sheet1`, and per-company sheet flush
-(cache advances only after a successful append).
+docs URL, blank `GOOGLE_SHEET_WORKSHEET` → `Sheet1`, per-company sheet flush
+(cache advances only after a successful append), keyword alias collapse, the
+public-page allowlist (no status, description, location, or source page), and
+column I appended without shifting A–H.
 
 ## Posted-date lookback
 Every run drops internships with `date_posted` older than **3 days**. Undated

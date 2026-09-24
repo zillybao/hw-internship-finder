@@ -37,13 +37,37 @@ LEGACY_HEADERS_WITHOUT_DATE_POSTED: list[str] = [
     "source_page",
 ]
 
+# SCHEMA_VERSION 1: A–H, before matched_keywords was appended as column I.
+LEGACY_HEADERS_V1: list[str] = [
+    "company",
+    "title",
+    "link",
+    "location",
+    "status",
+    "date_found",
+    "date_posted",
+    "source_page",
+]
+
+
+def _lowered_headers(existing: list[str]) -> list[str]:
+    return [str(h).strip().lower() for h in existing]
+
 
 def needs_date_posted_column(existing: list[str]) -> bool:
     """True when row 1 is the 7-column layout that omitted date_posted."""
-    lowered = [str(h).strip().lower() for h in existing]
+    lowered = _lowered_headers(existing)
     if lowered[: len(SHEET_HEADERS)] == SHEET_HEADERS:
         return False
     return lowered[:7] == LEGACY_HEADERS_WITHOUT_DATE_POSTED
+
+
+def needs_matched_keywords_column(existing: list[str]) -> bool:
+    """True when A–H are the v1 headers and column I is not matched_keywords yet."""
+    lowered = _lowered_headers(existing)
+    if lowered[: len(SHEET_HEADERS)] == SHEET_HEADERS:
+        return False
+    return lowered[: len(LEGACY_HEADERS_V1)] == LEGACY_HEADERS_V1
 
 DEFAULT_SEEN_WORKSHEET = "_seen"
 SEEN_HEADERS: list[str] = ["link", "company", "title", "date_found"]
@@ -98,10 +122,11 @@ def seen_links_needing_backfill(inbox_links: list[str], seen_hashes: set[str]) -
 
 
 def records_from_values(values: list[list[Any]]) -> list[dict[str, str]]:
-    """Turn sheet grid values into row dicts using columns A–H only.
+    """Turn sheet grid values into row dicts using columns A–I only.
 
     Keys are always ``SHEET_HEADERS`` by column index, so a renamed or
-    Title-Cased header row still maps ``link`` to column C.
+    Title-Cased header row still maps ``link`` to column C. Cells past
+    column I (including a schema sentinel in Z1) are ignored.
     """
     if len(values) <= 1:
         return []
@@ -191,12 +216,21 @@ class JobSheet:
         if not existing:
             self._sheet.update(range_name="A1", values=[SHEET_HEADERS], value_input_option="RAW")
             return
-        if [h.lower() for h in existing[: len(SHEET_HEADERS)]] == SHEET_HEADERS:
-            return
         if needs_date_posted_column(existing):
             # Insert G so existing source_page values shift to H; do not overwrite G.
             self._sheet.insert_cols([["date_posted"]], col=7)
             logger.info("Inserted missing date_posted column (G) on %s.", self.worksheet_name)
+            existing = self._sheet.row_values(1)
+        if [h.lower() for h in existing[: len(SHEET_HEADERS)]] == SHEET_HEADERS:
+            return
+        if needs_matched_keywords_column(existing):
+            # Append I. Do not insert — that would shift source_page and the Z1 sentinel.
+            self._sheet.update(
+                range_name="I1",
+                values=[["matched_keywords"]],
+                value_input_option="RAW",
+            )
+            logger.info("Added matched_keywords column (I) on %s.", self.worksheet_name)
             return
         logger.warning(
             "Sheet header mismatch (expected %s, got %s). Not reshaping existing data.",

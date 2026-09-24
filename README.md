@@ -1,8 +1,37 @@
 # Intern Finder
 
-A scheduled scanner for internships in **embedded / firmware / ASIC / FPGA / RTL**. It polls a configured list of company career boards, matches job **descriptions** against keywords, and **appends only new rows** to a Google Sheet.
+A public table of **embedded / firmware / ASIC / FPGA / RTL** internships, and the scanner that keeps it current. GitHub Pages shows company, role, apply link, date posted, and the keywords that matched. The same scan still appends new rows to a private Google Sheet.
 
-There is no Playwright and no generic crawler. Each company in `config/sites.yaml` (group 1) or `config/sites_b.yaml` (group 2) uses a named ATS parser (Greenhouse, Workday, Lever, …). You mark `applied` by hand in the sheet.
+There is no Playwright and no generic crawler. Each company in `config/sites.yaml` (group 1) or `config/sites_b.yaml` (group 2) uses a named ATS parser (Greenhouse, Workday, Lever, …). You mark `applied` by hand in the sheet. That status never appears on the public page.
+
+## Public page
+
+Visitors see listings that are still open and inside the retention window. A row leaves the page when either:
+
+- the company drops the posting (the scanner marks the sheet row `closed`), or
+- it is older than `retain_days` in `config/public.yaml` (default **14**), measured from `date_posted`, or from `date_found` when the board has no date.
+
+The sheet row stays. Rows already in the sheet before matched keywords were stored do not appear, because descriptions are never saved and the keyword cannot be reconstructed.
+
+Preview locally without deploying:
+
+```bash
+python -m src.publish
+python -m http.server -d dist
+```
+
+Open `http://127.0.0.1:8000/`. `site/index.html` is the same layout with fake sample rows (`python -m http.server -d site`).
+
+The live URL exists only after this workflow is on the default branch and **Settings → Pages → Source → GitHub Actions** is turned on.
+
+### Public vs private
+
+| On the page | Stays private |
+|-------------|---------------|
+| company, role, apply link, date posted, matched keywords, updated time | Google Sheet, `applied` / `closed` status, location, description, `source_page` |
+| company list and keyword config in this repo | service-account JSON, sheet id, Slack webhook, `.env`, `credentials.json`, `state/`, `logs/` |
+
+Do not commit secrets. A fork should use its own spreadsheet and its own Actions secrets. Share the sheet only with the service account, not “anyone with the link.”
 
 ## What it does
 
@@ -11,12 +40,12 @@ There is no Playwright and no generic crawler. Each company in `config/sites.yam
 - Drops postings whose location is clearly non-US (`config/locations.yaml`). Empty / remote / unknown city-only locations are kept; known foreign hubs (Shanghai, Linz, …) are dropped even without a country name.
 - Drops dated postings older than 3 days. Undated postings are kept.
 - Drops internships that are clearly post-undergrad only (`config/education.yaml`).
-- Keeps a posting only if the description matches a keyword in `config/keywords.yaml` (token match, so `asic` does not match `basic`).
+- Keeps a posting only if the description matches a keyword in `config/keywords.yaml` (token match, so `asic` does not match `basic`). The matched keywords are stored on the new sheet row and shown on the public page. Spelling variants such as `micro-controller` collapse to `microcontroller`.
 - Dedupes on the canonical job link. New matches are flushed to the sheet after each company (so a timeout still keeps earlier finds); history is never overwritten.
-- Marks previously `open` / `applied` rows `closed` when that link disappears from the company’s live intern-titled set.
+- Marks previously `open` / `applied` rows `closed` when that link disappears from the company’s live intern-titled set. Closed and expired rows drop off the public page on the next publish. A failed company scan does not mark that company closed.
 - Optional Slack digest of new rows and per-site failures.
 
-It does **not** auto-apply, scrape sites outside `sites.yaml` / `sites_b.yaml`, or write description text to the sheet.
+It does **not** auto-apply, scrape sites outside `sites.yaml` / `sites_b.yaml`, or write description text to the sheet or the public page. Status and credentials stay off the page.
 
 ## Requirements
 
@@ -61,10 +90,10 @@ The scanner also creates a `_seen` tab in the same spreadsheet. That tab is the 
 
 Sheet columns (written automatically if row 1 is empty):
 
-| company | title | link | location | status | date_found | date_posted | source_page |
-|---------|-------|------|----------|--------|------------|-------------|-------------|
+| company | title | link | location | status | date_found | date_posted | source_page | matched_keywords |
+|---------|-------|------|----------|--------|------------|-------------|-------------|------------------|
 
-`link` is the job posting (dedupe key). `source_page` is the career-board URL from the site YAML (used for closed-status). `status` is `open` or `closed` from the scanner; set `applied` yourself. Newest rows are at the bottom. Leave row 1 as headers in A–H only.
+`link` is the job posting (dedupe key). `source_page` is the career-board URL from the site YAML (used for closed-status). `status` is `open` or `closed` from the scanner; set `applied` yourself. `matched_keywords` is the comma-separated list that hit the description. Newest rows are at the bottom. Leave row 1 as headers in A–I only. An existing A–H header row gets column I added in place; A–H are not shifted.
 
 ## Run
 
@@ -74,6 +103,7 @@ From the project root (do not use an empty `.venv`):
 python -m src.run --dry-run    # group 1: fetch + filter, no sheet or state writes
 python -m src.run              # group 1: write to Google Sheets
 python -m src.run --sites config/sites_b.yaml --dry-run
+python -m src.publish         # private sheet -> dist/ (no deploy)
 python -m pytest
 ```
 
@@ -116,6 +146,8 @@ write failure.
 
 The workflow caches `state/` (`seen_jobs.json`, `company_runs.json`) between jobs and runs. Job timeout is 30 minutes **per group**; the scanner stops starting new companies after 26 minutes on Actions. Group 1 is `config/sites.yaml`. Group 2 is `config/sites_b.yaml` (intern-narrowed Workday/Arm plus elected adds). Both jobs write the same spreadsheet. `config/sites_paused.yaml` is an archive and is not scanned.
 
+After both scan jobs, **Public page** reads the sheet and deploys `dist/` with GitHub Pages. That job has its own token (`contents: read`, `pages: write`) and does not commit generated listings. If Pages is not enabled, or the deploy fails, the sheet scans are already finished and stay green. Turn on **Settings → Pages → Source → GitHub Actions** when you want the URL.
+
 ## Config
 
 **Companies** — add group 1 entries to `config/sites.yaml` and group 2 entries to `config/sites_b.yaml`, not to parser code. Supported `ats` values: `greenhouse`, `lever`, `ashby`, `workday`, `eightfold`, `oracle`, `amazon`, `phenom`, `smartrecruiters`, `talentbrew` (alias `smashfly`), `successfactors`, `icims`, `apple`, `google`, `tesla`, `arm`, `html`.
@@ -131,21 +163,27 @@ The workflow caches `state/` (`seen_jobs.json`, `company_runs.json`) between job
 
 Before adding a company: confirm `robots.txt` / ToS, prefer a public JSON list API, and use intern facets/`query` on large Workday / Eightfold / Phenom boards. Companies still waiting on a parser live in `config/urls_skipped.txt`.
 
-**Keywords** — edit `config/keywords.yaml`. A posting is kept if the description contains any of: `embedded`, `firmware`, `asic`, `fpga`, `rtl`, `mcu`, `microcontroller` (and a few spellings). Matching is case-insensitive **token** match on the **body**, not the title (plurals like `ASICs` still count).
+**Keywords** — edit `config/keywords.yaml`. A posting is kept if the description contains any of: `embedded`, `firmware`, `asic`, `fpga`, `rtl`, `mcu`, `microcontroller`. Matching is case-insensitive **token** match on the **body**, not the title (plurals like `ASICs` still count). `aliases` map other spellings onto those names.
 
-**Locations** — edit `config/locations.yaml`. Drop listings that name a foreign country with no US signal; a US country/state/`City, ST` match wins (`US and Canada` is kept). Keep ambiguous/empty locations.
+**Public retention** — edit `retain_days` in `config/public.yaml`. This only affects the page. The sheet is not cleared when a listing expires.
+
+**Locations** — edit `config/locations.yaml`. Drop listings that name a foreign country with no US signal; a US country/state/`City, ST` match wins (`US and Canada` is kept). Keep ambiguous/empty locations. Location stays on the sheet and is not on the public page.
 
 ## Layout
 
 ```
 config/sites.yaml      # group 1 companies + ATS + board/host/query/facets
 config/sites_b.yaml    # group 2 (Actions job 2)
-config/keywords.yaml   # description-body keywords
+config/keywords.yaml   # description-body keywords and spelling aliases
+config/public.yaml     # how long listings stay on the public page
 config/locations.yaml  # US vs non-US location filter
 config/urls.txt        # original career-page inventory
 config/urls_skipped.txt
 src/run.py             # fetch → parse → filter → dedupe → sheet
+src/publish.py         # private sheet → allowlisted dist/listings.js
 src/parse.py           # ATS parsers
+site/                  # static page; sample listings.js is fake
+dist/                  # generated page (gitignored)
 state/                 # seen hashes + per-company run counts (gitignored)
 logs/
 ```

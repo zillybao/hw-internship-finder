@@ -1,9 +1,10 @@
 """Tests for spreadsheet helpers that do not need the Sheets API."""
 
 from src.dedupe import identity_hashes
-from src.models import SHEET_HEADERS
+from src.models import SHEET_HEADERS, JobPosting
 from src.sheet import (
     needs_date_posted_column,
+    needs_matched_keywords_column,
     records_from_values,
     resolve_seen_worksheet_name,
     resolve_worksheet_name,
@@ -13,21 +14,19 @@ from src.sheet import (
 
 
 def test_spreadsheet_id_from_raw_id() -> None:
-    assert spreadsheet_id_from_value(" 1H0buUOQGmhKLn93DnAH9DmHySsqXANciCAA74KmZWQs ") == (
-        "1H0buUOQGmhKLn93DnAH9DmHySsqXANciCAA74KmZWQs"
-    )
+    assert spreadsheet_id_from_value(" your-spreadsheet-id ") == "your-spreadsheet-id"
 
 
 def test_spreadsheet_id_from_docs_url() -> None:
     url = (
         "https://docs.google.com/spreadsheets/d/"
-        "1H0buUOQGmhKLn93DnAH9DmHySsqXANciCAA74KmZWQs/edit?gid=0#gid=0"
+        "your-spreadsheet-id/edit?gid=0#gid=0"
     )
-    assert spreadsheet_id_from_value(url) == "1H0buUOQGmhKLn93DnAH9DmHySsqXANciCAA74KmZWQs"
+    assert spreadsheet_id_from_value(url) == "your-spreadsheet-id"
 
 
 def test_records_from_values_ignores_z1_schema_sentinel() -> None:
-    header = list(SHEET_HEADERS) + [""] * 17 + ["schema_version=1"]
+    header = list(SHEET_HEADERS) + [""] * 16 + ["schema_version=2"]
     values = [
         header,
         ["Acme", "Firmware Intern", "https://example.com/1", "Austin", "open", "2026-08-18", "", "https://board"],
@@ -37,6 +36,60 @@ def test_records_from_values_ignores_z1_schema_sentinel() -> None:
     assert len(rows) == 1
     assert rows[0]["company"] == "Acme"
     assert rows[0]["link"] == "https://example.com/1"
+    assert rows[0]["source_page"] == "https://board"
+    assert "schema_version=2" not in rows[0].values()
+
+
+def test_records_from_values_reads_matched_keywords_column() -> None:
+    values = [
+        list(SHEET_HEADERS),
+        [
+            "Acme",
+            "Firmware Intern",
+            "https://example.com/1",
+            "Austin",
+            "open",
+            "2026-08-18",
+            "2026-09-20",
+            "https://board",
+            "firmware, embedded",
+        ],
+    ]
+    rows = records_from_values(values)
+    assert rows[0]["matched_keywords"] == "firmware, embedded"
+    assert rows[0]["source_page"] == "https://board"
+
+
+def test_matched_keywords_column_appends_without_shifting() -> None:
+    v1 = [
+        "company",
+        "title",
+        "link",
+        "location",
+        "status",
+        "date_found",
+        "date_posted",
+        "source_page",
+    ]
+    assert needs_matched_keywords_column(v1) is True
+    assert needs_date_posted_column(v1) is False
+    assert v1 == SHEET_HEADERS[:8]
+    assert SHEET_HEADERS[8] == "matched_keywords"
+    assert needs_matched_keywords_column(list(SHEET_HEADERS)) is False
+
+
+def test_sheet_row_appends_matched_keywords() -> None:
+    posting = JobPosting(
+        company="Acme",
+        title="Firmware Intern",
+        link="https://example.com/1",
+        source_page="https://board",
+        matched_keywords=["firmware", "embedded"],
+    )
+    row = posting.sheet_row()
+    assert len(row) == len(SHEET_HEADERS)
+    assert row[7] == "https://board"
+    assert row[8] == "firmware, embedded"
 
 
 def test_records_from_values_uses_positional_headers_when_renamed() -> None:
