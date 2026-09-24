@@ -11,8 +11,10 @@ from src.filter import (
     filter_by_posted_date,
     filter_by_us_location,
     load_education_filter,
+    load_keyword_aliases,
     load_keywords,
     load_us_location_filter,
+    matched_keywords,
     matches_keywords,
 )
 from src.models import JobPosting
@@ -73,10 +75,49 @@ def test_filter_log_only_keeps_all() -> None:
     assert len(skipped) == 1
 
 
+def test_matched_keywords_collapses_aliases_in_file_order() -> None:
+    keywords = ["fpga", "microcontroller"]
+    aliases = {
+        "micro-controller": "microcontroller",
+        "micro-controllers": "microcontroller",
+        "microcontrollers": "microcontroller",
+    }
+    assert matched_keywords("Work on micro-controllers and FPGAs", keywords, aliases) == [
+        "fpga",
+        "microcontroller",
+    ]
+    assert matched_keywords("micro-controller only", ["fpga"], aliases) == []
+
+
+def test_matched_keywords_asic_is_not_basic() -> None:
+    assert matched_keywords("Basic qualifications: Excel, SQL", ["asic"]) == []
+    assert matched_keywords("ASIC design and firmware", ["asic", "firmware"]) == [
+        "asic",
+        "firmware",
+    ]
+
+
+def test_filter_by_description_keeps_alias_spellings() -> None:
+    posts = [_posting("Eng Intern", "Build a micro-controller bring-up")]
+    kept, skipped = filter_by_description(
+        posts,
+        ["microcontroller"],
+        aliases={"micro-controller": "microcontroller"},
+    )
+    assert len(kept) == 1
+    assert skipped == []
+
+
 def test_load_keywords(tmp_path: Path) -> None:
     path = tmp_path / "keywords.yaml"
     path.write_text("keywords:\n  - Embedded\n  - FPGA\n", encoding="utf-8")
     assert load_keywords(path) == ["embedded", "fpga"]
+    assert load_keyword_aliases(path) == {}
+    path.write_text(
+        "keywords:\n  - mcu\naliases:\n  micro-controller: microcontroller\n",
+        encoding="utf-8",
+    )
+    assert load_keyword_aliases(path) == {"micro-controller": "microcontroller"}
 
 
 def test_us_location_keeps_country_and_state_forms() -> None:
@@ -201,3 +242,18 @@ def test_education_drops_grad_only_keeps_bachelor_or_above() -> None:
     kept, skipped = filter_by_education(posts, rules)
     assert [p.title for p in kept] == ["Eng Intern"]
     assert [p.title for p in skipped] == ["PhD Intern"]
+    assert rules.sheet == "skip"
+
+
+def test_education_sheet_include_keeps_grad_only(tmp_path: Path) -> None:
+    path = tmp_path / "education.yaml"
+    path.write_text(
+        "sheet: include\ntitle_drop:\n  - phd intern\ngraduate_required: []\nundergrad_ok: []\n",
+        encoding="utf-8",
+    )
+    rules = load_education_filter(path)
+    posts = [_posting("PhD Intern", "FPGA and RTL")]
+    kept, skipped = filter_by_education(posts, rules)
+    assert rules.sheet == "include"
+    assert [p.title for p in kept] == ["PhD Intern"]
+    assert skipped == []

@@ -1,0 +1,4 @@
+# How long a listing stays on the public page.
+# Age is date_posted, or date_found when the board did not provide a date.
+# The private sheet is not deleted when the page drops a row.
+retain_days: 14
