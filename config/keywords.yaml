@@ -1,8 +1,10 @@
 # Description-body keywords (case-insensitive token match).
 # A posting is kept only if its description matches at least one of these.
 # `aliases` collapse alternate spellings onto a keyword above (file order).
+# Bare "embedded" is intentionally absent (embedded analytics, embedded in a
+# team, ...); only the "embedded <hw/fw noun>" phrases below count.
 keywords:
-  - embedded
+  - embedded systems
   - firmware
   - asic
   - fpga
@@ -10,7 +12,7 @@ keywords:
   - mcu
   - microcontroller
   - verilog
-  - system verilog
+  - systemverilog
   - vhdl
   - uvm
   - vlsi
@@ -29,3 +31,16 @@ aliases:
   riscv: risc-v
   system verilog: systemverilog
   system-verilog: systemverilog
+  embedded system: embedded systems
+  embedded software: embedded systems
+  embedded firmware: embedded systems
+  embedded c: embedded systems
+  embedded c++: embedded systems
+  embedded linux: embedded systems
+  embedded hardware: embedded systems
+  embedded processor: embedded systems
+  embedded controller: embedded systems
+  embedded platform: embedded systems
+  embedded device: embedded systems
+  embedded development: embedded systems
+  embedded programming: embedded systems

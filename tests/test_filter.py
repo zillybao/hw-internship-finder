@@ -21,6 +21,7 @@ from src.models import JobPosting
 
 LOCATIONS_YAML = Path(__file__).resolve().parent.parent / "config" / "locations.yaml"
 EDUCATION_YAML = Path(__file__).resolve().parent.parent / "config" / "education.yaml"
+KEYWORDS_YAML = Path(__file__).resolve().parent.parent / "config" / "keywords.yaml"
 
 
 def _posting(
@@ -118,6 +119,34 @@ def test_load_keywords(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert load_keyword_aliases(path) == {"micro-controller": "microcontroller"}
+
+
+def test_config_embedded_requires_hw_fw_phrase() -> None:
+    keywords = load_keywords(KEYWORDS_YAML)
+    aliases = load_keyword_aliases(KEYWORDS_YAML)
+
+    def hits(text: str) -> list[str]:
+        return matched_keywords(text, keywords, aliases)
+
+    assert hits("Embedded analytics dashboards; you will be embedded in the team.") == []
+    for text in (
+        "Embedded systems design",
+        "Write embedded software",
+        "Embedded C/C++ on ARM",
+        "Embedded Linux drivers",
+        "Bring up embedded platforms",
+        "Test embedded devices",
+        "Embedded development experience",
+    ):
+        assert hits(text) == ["embedded systems"], text
+    assert hits("Embedded firmware") == ["embedded systems", "firmware"]
+
+
+def test_config_systemverilog_spellings() -> None:
+    keywords = load_keywords(KEYWORDS_YAML)
+    aliases = load_keyword_aliases(KEYWORDS_YAML)
+    for text in ("SystemVerilog", "System Verilog", "System-Verilog"):
+        assert "systemverilog" in matched_keywords(text, keywords, aliases), text
 
 
 def test_us_location_keeps_country_and_state_forms() -> None:

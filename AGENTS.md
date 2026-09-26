@@ -216,10 +216,13 @@ revive them.
 Keep a posting only if its **description** contains at least one keyword from
 `config/keywords.yaml` (case-insensitive **token** match; optional trailing `s`):
 
-`embedded`, `firmware`, `asic`, `fpga`, `rtl`, `mcu`, `microcontroller`
+`embedded systems`, `firmware`, `asic`, `fpga`, `rtl`, `mcu`, `microcontroller`,
+plus HDL/IC terms (`verilog`, `systemverilog`, `vhdl`, `uvm`, `vlsi`, …).
 
 `aliases` in that file collapse other spellings (`micro-controller`,
-`microcontrollers`) onto `microcontroller`. Record every canonical hit, in file
+`microcontrollers`) onto `microcontroller`. Bare `embedded` is not a keyword;
+only `embedded <system|software|firmware|C|Linux|hardware|processor|…>`
+phrases alias onto `embedded systems`. Record every canonical hit, in file
 order, on the posting before stripping the description.
 
 Tune that file, not `parse.py`. Title-only matching misses “Software Engineering
